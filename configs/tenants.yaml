@@ -27,6 +27,7 @@ companies:
       collection: faq_pizza
       threshold: 0.85
       vector_db: "localhost:6333"   # A안 전환 시 qdrant-pizza:6333 으로 교체
+      server_url: "http://127.0.0.1:9001/mcp"   # 업체별 FAQ MCP 서버 인스턴스(A안)
 
   chinese:
     name: "행복반점"
@@ -41,6 +42,7 @@ companies:
       collection: faq_chinese
       threshold: 0.85
       vector_db: "localhost:6333"
+      server_url: "http://127.0.0.1:9002/mcp"
 
   chicken:
     name: "바삭치킨"
@@ -55,3 +57,4 @@ companies:
       collection: faq_chicken
       threshold: 0.85
       vector_db: "localhost:6333"
+      server_url: "http://127.0.0.1:9003/mcp"

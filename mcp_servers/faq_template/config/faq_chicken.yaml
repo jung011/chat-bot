@@ -1,0 +1,7 @@
+# 치킨집 FAQ 서버 인스턴스 설정 (§08 §3, A안).
+company_id: chicken
+collection: faq_chicken
+threshold: 0.85
+vector_db: "localhost:6333"
+host: "127.0.0.1"
+port: 9003

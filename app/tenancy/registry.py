@@ -18,6 +18,7 @@ class FaqConfig:
     collection: str
     threshold: float
     vector_db: str
+    server_url: str = ""   # 업체별 FAQ MCP 서버 URL(A안). 비면 인프로세스 폴백.
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,7 @@ def _build_registry() -> TenantRegistry:
                 collection=faq.get("collection", f"faq_{cid}"),
                 threshold=float(faq.get("threshold", d_faq.get("threshold", 0.85))),
                 vector_db=faq.get("vector_db", "localhost:6333"),
+                server_url=faq.get("server_url", ""),
             ),
             retrieval=RetrievalConfig(
                 doc_top_k=int(d_ret.get("doc_top_k", 20)),

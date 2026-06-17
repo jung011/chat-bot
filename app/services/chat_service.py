@@ -54,6 +54,7 @@ def _mk_state(tenant: Tenant, question: str, history: list[dict]):
         business_info=tenant.business_info_text(),
         faq_collection=tenant.faq.collection,
         faq_threshold=tenant.faq.threshold,
+        faq_server_url=tenant.faq.server_url,
         doc_top_k=tenant.retrieval.doc_top_k,
         doc_top_n=tenant.retrieval.doc_top_n,
         tool_top_k=tenant.retrieval.tool_top_k,
