@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
 
     # LLM (Claude)
+    # llm_provider: "anthropic"(API 키) | "claude_cli"(로컬 Claude Code CLI, 키 불필요)
+    llm_provider: str = "anthropic"
+    claude_cli_path: str = "claude"
     anthropic_api_key: str = ""
     llm_model_light: str = "claude-haiku-4-5-20251001"
     llm_model_main: str = "claude-sonnet-4-6"

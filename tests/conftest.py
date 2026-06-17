@@ -7,9 +7,15 @@ Windows 에서 psycopg(async)는 ProactorEventLoop 를 못 쓰므로, 이벤트 
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 
 import pytest
+
+# 테스트는 LLM 호출을 결정적으로 — .env 가 claude_cli 여도 anthropic(키 없음→degrade)로 고정.
+# (환경변수가 .env 보다 우선하므로 settings 생성 전에 설정한다.)
+os.environ["LLM_PROVIDER"] = "anthropic"
+os.environ["ANTHROPIC_API_KEY"] = ""
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

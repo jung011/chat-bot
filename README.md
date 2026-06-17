@@ -17,8 +17,12 @@ cd ../Docker && docker compose up -d
 cp .env.example .env   # 필요 시 값 수정 (ANTHROPIC_API_KEY 등)
 ```
 
-> **ANTHROPIC_API_KEY 없이도** 동작한다. FAQ 인터셉트·검색·자동완성은 키 없이 작동하고,
-> 최종 답변 생성(LLM)만 폴백 문구로 degrade 된다. 키를 넣으면 생성·라우팅·재작성이 활성화된다.
+> **LLM 백엔드 3가지 모드:**
+> - `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` → Anthropic API
+> - `LLM_PROVIDER=claude_cli` → **로컬 Claude Code CLI(`claude -p`) 사용, API 키 불필요** (설치된 `claude` 플랜으로 호출)
+> - 키/CLI 없이 `anthropic` → FAQ 인터셉트·검색·자동완성은 동작하고, 생성/라우팅/agent 도구호출만 폴백/degrade
+>
+> 로컬 Claude 로 전체 흐름(생성·agent 도구호출)을 키 없이 돌리려면 `.env` 에 `LLM_PROVIDER=claude_cli` 설정.
 
 ## 설치 & 실행
 

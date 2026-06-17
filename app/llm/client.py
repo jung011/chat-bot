@@ -129,11 +129,17 @@ class LLMClient:
             raise LLMTimeout("LLM 응답이 제한 시간을 초과했습니다.") from e
 
 
-_client: LLMClient | None = None
+_client = None
 
 
-def get_llm() -> LLMClient:
+def get_llm():
+    """LLM 백엔드. LLM_PROVIDER=claude_cli 면 로컬 Claude CLI, 아니면 Anthropic API."""
     global _client
     if _client is None:
-        _client = LLMClient()
+        if settings.llm_provider == "claude_cli":
+            from app.llm.cli_client import ClaudeCLIClient
+
+            _client = ClaudeCLIClient()
+        else:
+            _client = LLMClient()
     return _client
