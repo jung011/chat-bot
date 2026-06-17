@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # 오케스트레이션 루프 상한 (§06 §9)
     max_tool_iters: int = 3
 
+    # 라우팅 방식 — "rule"(규칙, LLM 호출 0, 기본) | "llm"(Haiku 분류) | "hybrid"(규칙→모호시 LLM)
+    # rule 기본: 일반 RAG 질의의 LLM 호출을 2회(route+generate)→1회(generate)로 줄여 지연 단축.
+    route_mode: str = "rule"
+
     # 검증(verify) 노드 — 선택(§06 §4.5). 경량 모델 판사가 근거 있는 답을 오기각하는
     # 경우가 있어 기본 OFF. 생성 프롬프트가 이미 '컨텍스트 외 답변 금지'를 강제한다.
     verify_enabled: bool = False
