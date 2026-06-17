@@ -1,0 +1,6 @@
+# FAQ 서버 인스턴스 설정 예시 (§08 §3). 코드 1벌, 이 설정만 업체별로 다르게.
+# 업체별 인스턴스로 배포: 이 파일을 company_id 별로 복사해 값만 교체한다.
+company_id: pizza
+vector_db: "localhost:6333"   # A안 전환 시 qdrant-pizza:6333
+collection: faq_pizza
+threshold: 0.85               # 즉답 임계값(보수적 시작, §07 §4.1)

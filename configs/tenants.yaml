@@ -1,0 +1,57 @@
+# 테넌트 레지스트리 (§01 §4.2, §04 companies)
+# - 고객용 API는 비회원이며 company_id 를 직접 받는다. 여기에 없는 id 는 400.
+# - persona/business_info 는 LLM 프롬프트에 주입(§06 §3, §4.4).
+# - faq.* 는 업체별 FAQ 인스턴스 격리(A안) 설정. 파일럿은 단일 Qdrant 에
+#   업체별 컬렉션(faq_<id>)으로 시작하고, 추후 인스턴스 분리로 전환.
+# 단일 소스(SSOT)로 이 파일을 사용한다. companies 테이블은 운영 전환 시 동기화.
+
+defaults:
+  faq:
+    threshold: 0.85          # FAQ 즉답 임계값(§07 §4.1)
+  retrieval:
+    doc_top_k: 20            # 문서 RAG 검색(Rerank 전)
+    doc_top_n: 5             # 생성 투입(Rerank 후)
+    tool_top_k: 5            # Tool RAG 후보 도구 수
+
+companies:
+  pizza:
+    name: "마르게리따 피자"
+    status: active
+    persona: "피자집의 친절한 직원입니다. 토핑·세트 추천에 능숙하고, 밝고 캐주얼한 말투로 안내합니다."
+    business_info:
+      phone: "02-111-1111"
+      address: "서울시 강남구 피자로 1"
+      hours: "매일 11:00~22:00 (브레이크타임 15:00~17:00)"
+      delivery: "강남구 일대 배달. 최소주문 15,000원, 배달비 3,000원"
+    faq:
+      collection: faq_pizza
+      threshold: 0.85
+      vector_db: "localhost:6333"   # A안 전환 시 qdrant-pizza:6333 으로 교체
+
+  chinese:
+    name: "행복반점"
+    status: active
+    persona: "중국집 직원입니다. 점심특선·단체주문 안내에 능숙하고, 정중하고 간결한 말투로 안내합니다."
+    business_info:
+      phone: "02-222-2222"
+      address: "서울시 마포구 중화로 22"
+      hours: "매일 10:30~21:30 (연중무휴)"
+      delivery: "마포구 일대 배달. 최소주문 12,000원, 배달비 2,000원"
+    faq:
+      collection: faq_chinese
+      threshold: 0.85
+      vector_db: "localhost:6333"
+
+  chicken:
+    name: "바삭치킨"
+    status: active
+    persona: "치킨집 직원입니다. 후라이드/양념·부분육 옵션 안내에 능숙하고, 친근한 말투로 안내합니다."
+    business_info:
+      phone: "02-333-3333"
+      address: "서울시 송파구 치킨대로 33"
+      hours: "매일 15:00~다음날 02:00"
+      delivery: "송파구 일대 배달. 최소주문 16,000원, 배달비 3,500원"
+    faq:
+      collection: faq_chicken
+      threshold: 0.85
+      vector_db: "localhost:6333"
