@@ -69,6 +69,23 @@ async def ensure_collection(name: str) -> None:
         )
 
 
+async def ensure_company_index(name: str) -> None:
+    """company_id payload 에 KEYWORD 인덱스 생성 → 필터 검색 가속(§04 §2).
+
+    단일 컬렉션 + company_id 필터 전략에서 테넌트 검색을 빠르게 한다(컬렉션 분리 대신).
+    멱등 — 이미 있으면 무시.
+    """
+    client = get_client()
+    try:
+        await client.create_payload_index(
+            collection_name=name,
+            field_name="company_id",
+            field_schema=models.PayloadSchemaType.KEYWORD,
+        )
+    except Exception:
+        pass  # 이미 존재/동일 스키마면 무시
+
+
 async def upsert(name: str, points: list[dict[str, Any]]) -> int:
     """points: [{id, vector, payload}] 적재. 적재 건수 반환."""
     if not points:

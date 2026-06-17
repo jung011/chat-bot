@@ -21,6 +21,8 @@ async def index_documents(company_id: str, docs: list[dict]) -> dict:
     """docs: [{doc_id, title, category, text, source_uri}]. 청크 적재 + 질문 생성."""
     await vector_store.ensure_collection(DOCUMENTS_COLLECTION)
     await vector_store.ensure_collection(AUTOCOMPLETE_COLLECTION)
+    await vector_store.ensure_company_index(DOCUMENTS_COLLECTION)
+    await vector_store.ensure_company_index(AUTOCOMPLETE_COLLECTION)
     emb = get_embedder()
 
     doc_points: list[dict] = []
@@ -76,6 +78,7 @@ async def index_tools(catalog: list[dict], company_id: str) -> int:
     retrieve_tools(company_id=...) 가 그 업체 도구만 검색하도록 한다(업체별 일반 서버 대응).
     """
     await vector_store.ensure_collection("tools")
+    await vector_store.ensure_company_index("tools")
     emb = get_embedder()
     points = [
         {
