@@ -17,6 +17,7 @@ companies:
   pizza:
     name: "마르게리따 피자"
     status: active
+    general_server_url: "http://127.0.0.1:9101/mcp"   # 업체별 일반(도메인) MCP 서버(A안)
     persona: "피자집의 친절한 직원입니다. 토핑·세트 추천에 능숙하고, 밝고 캐주얼한 말투로 안내합니다."
     business_info:
       phone: "02-111-1111"
@@ -32,6 +33,7 @@ companies:
   chinese:
     name: "행복반점"
     status: active
+    general_server_url: "http://127.0.0.1:9102/mcp"
     persona: "중국집 직원입니다. 점심특선·단체주문 안내에 능숙하고, 정중하고 간결한 말투로 안내합니다."
     business_info:
       phone: "02-222-2222"
@@ -47,6 +49,7 @@ companies:
   chicken:
     name: "바삭치킨"
     status: active
+    general_server_url: "http://127.0.0.1:9103/mcp"
     persona: "치킨집 직원입니다. 후라이드/양념·부분육 옵션 안내에 능숙하고, 친근한 말투로 안내합니다."
     business_info:
       phone: "02-333-3333"

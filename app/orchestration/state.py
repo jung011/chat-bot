@@ -23,6 +23,7 @@ class RAGState(TypedDict, total=False):
     faq_collection: str
     faq_threshold: float
     faq_server_url: str           # 업체별 FAQ MCP 서버 URL(A안). 비면 인프로세스.
+    general_server_url: str       # 업체별 일반(도메인) MCP 서버 URL(A안). 비면 인프로세스.
     doc_top_k: int
     doc_top_n: int
     tool_top_k: int
@@ -52,6 +53,7 @@ def initial_state(
     faq_collection: str,
     faq_threshold: float,
     faq_server_url: str,
+    general_server_url: str,
     doc_top_k: int,
     doc_top_n: int,
     tool_top_k: int,
@@ -65,6 +67,7 @@ def initial_state(
         faq_collection=faq_collection,
         faq_threshold=faq_threshold,
         faq_server_url=faq_server_url,
+        general_server_url=general_server_url,
         doc_top_k=doc_top_k,
         doc_top_n=doc_top_n,
         tool_top_k=tool_top_k,

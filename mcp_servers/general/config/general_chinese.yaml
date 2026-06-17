@@ -1,0 +1,4 @@
+# 중국집 일반(도메인) MCP 서버 인스턴스 설정 (§08, A안).
+company_id: chinese
+host: "127.0.0.1"
+port: 9102

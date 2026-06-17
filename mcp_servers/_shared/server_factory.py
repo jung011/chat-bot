@@ -11,8 +11,10 @@ from mcp.server.fastmcp import FastMCP
 from mcp_servers._shared.tooling import ToolSpec
 
 
-def build_server(name: str, tools: list[ToolSpec]) -> FastMCP:
-    mcp = FastMCP(name)
+def build_server(
+    name: str, tools: list[ToolSpec], *, host: str = "127.0.0.1", port: int = 8000
+) -> FastMCP:
+    mcp = FastMCP(name, host=host, port=port)
     for spec in tools:
         mcp.add_tool(spec.handler, name=spec.name, description=spec.description)
     return mcp

@@ -107,8 +107,15 @@ async def main() -> None:
         )
         print(f"[{company_id}] docs chunks={stats['chunks']} acq={stats['questions']} faq={faq_res['accepted']}")
 
-    n_tools = await pipeline.index_tools(mcp_client.catalog())
-    print(f"[tools] indexed {n_tools} tool descriptions")
+    # 도구는 업체별로 적재(payload.company_id) → retrieve_tools(company_id) 필터 대응.
+    # 파일럿은 3개 업체가 동일 도구 세트를 보유(공용 코드 1벌)하므로 카탈로그를 업체별로 태깅 적재.
+    if await vector_store.get_client().collection_exists("tools"):
+        await vector_store.get_client().delete_collection("tools")  # 재실행 시 옛 포인트 정리
+    catalog = mcp_client.catalog()
+    total_tools = 0
+    for company_id in DOCS:
+        total_tools += await pipeline.index_tools(catalog, company_id)
+    print(f"[tools] indexed {total_tools} tool entries ({len(catalog)} tools × {len(DOCS)} 업체)")
 
     await postgres.close_pool()
     await redis_client.close_client()

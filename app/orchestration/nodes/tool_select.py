@@ -18,7 +18,7 @@ from app.llm.models import Stage, model_for
 from app.memory import short_term
 from app.orchestration import prompts
 from app.orchestration.state import RAGState, add_usage
-from app.mcp import client as mcp_client
+from app.mcp import domain_client
 from app.retrieval import hybrid, reranker, tool_retriever
 
 DOCUMENTS_COLLECTION = "documents"
@@ -80,7 +80,7 @@ async def agent(state: RAGState) -> dict:
     llm = get_llm()
 
     candidates = await tool_retriever.retrieve_tools(
-        question, top_k=state.get("tool_top_k", settings.tool_top_k)
+        question, company_id=company_id, top_k=state.get("tool_top_k", settings.tool_top_k)
     )
     if not candidates:
         return {"mode": "fail", "fail_reason": "A"}  # 적합한 도구 없음
@@ -127,9 +127,10 @@ async def agent(state: RAGState) -> dict:
             messages.append({"role": "assistant", "content": assistant_blocks})
 
             tool_results = []
+            general_url = state.get("general_server_url", "")
             for tc in comp.tool_calls:
                 args = {k: v for k, v in tc.input.items() if k != "company_id"}
-                result = await mcp_client.call(tc.name, company_id, **args)
+                result = await domain_client.call(general_url, tc.name, company_id, **args)
                 trace.append({"tool": tc.name, "args": args, "result": result})
                 if result.get("success"):
                     sources.append({"type": "tool", "title": tc.name})

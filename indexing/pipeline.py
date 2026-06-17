@@ -67,15 +67,19 @@ async def index_documents(company_id: str, docs: list[dict]) -> dict:
     return {"chunks": len(doc_points), "questions": len(acq_points)}
 
 
-async def index_tools(catalog: list[dict]) -> int:
-    """도구 description 을 tools 컬렉션에 적재(Tool RAG, §04 §3.1)."""
+async def index_tools(catalog: list[dict], company_id: str) -> int:
+    """도구 description 을 tools 컬렉션에 적재(Tool RAG, §04 §3.1).
+
+    업체별로 적재한다(payload.company_id 태깅). 같은 도구라도 업체별 포인트로 나뉘어
+    retrieve_tools(company_id=...) 가 그 업체 도구만 검색하도록 한다(업체별 일반 서버 대응).
+    """
     await vector_store.ensure_collection("tools")
     emb = get_embedder()
     points = [
         {
-            "id": f"tool_{t['name']}",
+            "id": f"tool_{company_id}_{t['name']}",
             "vector": emb.embed(t["description"]),
-            "payload": t,
+            "payload": {**t, "company_id": company_id},
         }
         for t in catalog
     ]

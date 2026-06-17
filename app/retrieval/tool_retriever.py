@@ -11,13 +11,20 @@ from app.retrieval import hybrid, reranker
 TOOLS_COLLECTION = "tools"
 
 
-async def retrieve_tools(query: str, *, top_k: int | None = None) -> list[dict]:
-    """관련 도구 후보 목록. 각 원소: {server, name, description, params_schema}."""
+async def retrieve_tools(
+    query: str, *, company_id: str | None = None, top_k: int | None = None
+) -> list[dict]:
+    """관련 도구 후보 목록. 각 원소: {server, name, description, params_schema}.
+
+    company_id 가 주어지면 그 업체가 보유한 도구로만 검색을 한정한다(업체별 일반
+    MCP 서버 분리에 대응 — 그 업체에 없는 도구를 후보로 주지 않음). None 이면
+    전체 도구에서 검색(공용 호환).
+    """
     k = top_k or settings.tool_top_k
     hits = await hybrid.search(
         TOOLS_COLLECTION,
         query,
-        company_id=None,  # 도구는 테넌트 무관 공용(§04 §2)
+        company_id=company_id,
         top_k=k * 2,
         alpha=0.5,
         text_field="description",

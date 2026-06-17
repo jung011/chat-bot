@@ -31,15 +31,18 @@ pip install -e ".[dev]"
 python scripts/init_db.py     # §04 테이블 생성
 python scripts/seed_demo.py   # 피자/중국/치킨 메뉴·정책·FAQ·도구 적재
 
-# (선택) 업체별 FAQ MCP 서버 3개 기동 — 별도 터미널 (A안)
-python scripts/run_faq_servers.py   # pizza:9001 / chinese:9002 / chicken:9003
+# (선택) 업체별 MCP 서버 6개 기동 — 별도 터미널 (A안)
+python scripts/run_mcp_servers.py
+#   FAQ:  pizza 9001 / chinese 9002 / chicken 9003
+#   일반: pizza 9101 / chinese 9102 / chicken 9103
+#   (FAQ만: python scripts/run_faq_servers.py)
 
 # 메인 앱 실행 (권장 — 모든 OS에서 안전)
 python run.py
 ```
 
-> FAQ 서버를 띄우지 않아도 동작한다(오케스트레이터가 인프로세스 매칭으로 자동 폴백).
-> 띄우면 FAQ 인터셉트가 **업체별 독립 MCP 서버**(streamable-http)로 처리된다.
+> MCP 서버를 띄우지 않아도 동작한다(오케스트레이터가 인프로세스 호출로 자동 폴백).
+> 띄우면 FAQ 인터셉트·도구 실행이 **업체별 독립 MCP 서버**(streamable-http)로 처리된다.
 
 > **Windows 주의:** 반드시 `python run.py` 로 실행한다.
 > Windows 기본 asyncio 루프(ProactorEventLoop)는 psycopg(async)를 지원하지
@@ -85,8 +88,8 @@ app/
   llm/           Claude 클라이언트 + 모델 티어(Haiku/Sonnet/Opus)
   memory/        Redis 단기 대화
   autocomplete/  prefix+시맨틱 추천
-  mcp/client.py  도구 호출(인프로세스 레지스트리)
-mcp_servers/     FAQ 템플릿 + 도메인 도구(documents·store·order, FastMCP)
+  mcp/           client(인프로세스) · faq_client · domain_client(업체별 서버 MCP 호출)
+mcp_servers/     faq_template(업체별 FAQ) · general(업체별 일반) · domains(도메인 도구 단일소스)
 indexing/        파싱→청킹→임베딩→적재 + 질문 생성
 scripts/         init_db·seed_demo·schema.sql
 ```
@@ -101,8 +104,10 @@ scripts/         init_db·seed_demo·schema.sql
   (`mcp_servers/faq_template` 코드 1벌 + `config/faq_<id>.yaml` 설정만 다르게, §01 §6).
   오케스트레이터는 `app/mcp/faq_client.py` 로 **표준 MCP 프로토콜(streamable-http)** 호출
   → 미기동 시 인프로세스 폴백. (벡터DB 는 아직 공용 Qdrant + 컬렉션 `faq_<id>`; 인스턴스 분리는 운영 전환.)
-- **도메인 MCP(documents·store·order)**: 도구는 단일 소스(`mcp_servers/domains/.../tools.py`).
-  FastMCP `server.py` 로 독립 배포 가능하나, 오케스트레이터는 `app/mcp/client.py` 인프로세스
-  레지스트리로 호출(테스트 용이). 운영은 표준 MCP 프로토콜로 교체.
+- **일반(도메인) MCP 서버(A안, 실제 분리)**: 업체별 일반 MCP 서버가 **독립 프로세스/포트**(9101~3)로 뜬다
+  (`mcp_servers/general` — 도메인 도구 `documents·store·order` 7개를 묶음, 코드 1벌 + `config/general_<id>.yaml`).
+  오케스트레이터는 `app/mcp/domain_client.py` 로 **표준 MCP 프로토콜** 호출 → 미기동 시 인프로세스 폴백.
+- **Tool RAG company_id 필터**: `tools` 컬렉션을 업체별로 태깅 적재(`index_tools(catalog, company_id)`).
+  `tool_retriever.retrieve_tools(query, company_id=...)` 가 그 업체 도구로만 후보를 검색 → LLM 에 다른 업체 도구를 노출하지 않음.
 - **관리자 인증**: 단일 공유 토큰(`ADMIN_TOKEN`). 운영은 `admins` 테이블 기반 per-company.
 - **인덱싱 잡**: `/v1/admin/index` 는 작업 기록만(워커 미구현).

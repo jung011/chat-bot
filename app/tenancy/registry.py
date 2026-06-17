@@ -37,6 +37,7 @@ class Tenant:
     business_info: dict
     faq: FaqConfig
     retrieval: RetrievalConfig = field(repr=False)
+    general_server_url: str = ""   # 업체별 일반(도메인) MCP 서버 URL(A안). 비면 인프로세스.
 
     @property
     def active(self) -> bool:
@@ -101,6 +102,7 @@ def _build_registry() -> TenantRegistry:
                 doc_top_n=int(d_ret.get("doc_top_n", 5)),
                 tool_top_k=int(d_ret.get("tool_top_k", 5)),
             ),
+            general_server_url=c.get("general_server_url", ""),
         )
     return TenantRegistry(tenants)
 
