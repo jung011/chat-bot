@@ -96,7 +96,25 @@ FAQ = {
 }
 
 
+async def _reset() -> None:
+    """멱등 시드 — 관련 벡터 컬렉션·자동완성 풀·FAQ 이력을 초기화(재실행 시 중복 방지)."""
+    client = vector_store.get_client()
+    collections = ["documents", "autocomplete_q", "tools"]
+    for cid in DOCS:
+        collections.append(tenant_router.resolve(cid).faq.collection)  # faq_<id>
+    for coll in collections:
+        if await client.collection_exists(coll):
+            await client.delete_collection(coll)
+    # Redis 자동완성 풀 + Postgres FAQ 이력 초기화
+    r = redis_client.get_client()
+    async with (await postgres.init_pool()).connection() as conn:
+        for cid in DOCS:
+            await r.delete(f"ac:{cid}")
+            await conn.execute("DELETE FROM faq_sources WHERE company_id=%s", (cid,))
+
+
 async def main() -> None:
+    await _reset()
     for company_id, docs in DOCS.items():
         tenant = tenant_router.resolve(company_id)
         stats = await pipeline.index_documents(company_id, docs)
@@ -109,8 +127,6 @@ async def main() -> None:
 
     # 도구는 업체별로 적재(payload.company_id) → retrieve_tools(company_id) 필터 대응.
     # 파일럿은 3개 업체가 동일 도구 세트를 보유(공용 코드 1벌)하므로 카탈로그를 업체별로 태깅 적재.
-    if await vector_store.get_client().collection_exists("tools"):
-        await vector_store.get_client().delete_collection("tools")  # 재실행 시 옛 포인트 정리
     catalog = mcp_client.catalog()
     total_tools = 0
     for company_id in DOCS:

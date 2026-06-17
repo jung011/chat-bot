@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-import secrets
+import hashlib
 
 from app.autocomplete import suggester
 from app.retrieval import vector_store
@@ -47,9 +47,11 @@ async def index_documents(company_id: str, docs: list[dict]) -> dict:
             )
             # 자동완성 질문 생성
             for q in question_gen.dedup(await question_gen.generate_questions(ch)):
+                qhash = hashlib.sha1(q.encode("utf-8")).hexdigest()[:16]
                 acq_points.append(
                     {
-                        "id": f"acq_{company_id}_{secrets.token_hex(8)}",
+                        # 결정적 ID(질문 해시) — 재인덱싱 시 중복 적재 방지(멱등)
+                        "id": f"acq_{company_id}_{qhash}",
                         "vector": emb.embed(q),
                         "payload": {
                             "company_id": company_id,

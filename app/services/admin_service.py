@@ -6,7 +6,7 @@ company_id 로 결정한다(§03 §3.6 "토큰의 company_id").
 """
 from __future__ import annotations
 
-import secrets
+import hashlib
 
 from app.db import postgres
 from app.db import repositories as repo
@@ -27,7 +27,9 @@ async def upload_faq(tenant: Tenant, items: list[dict]) -> dict:
         answer = (it.get("answer") or "").strip()
         if not question or not answer:
             continue
-        vector_id = f"faq_{tenant.company_id}_{secrets.token_hex(8)}"
+        # 결정적 ID(질문 내용 해시) — 같은 질문 재업로드 시 쌓이지 않고 덮어쓴다(멱등).
+        qhash = hashlib.sha1(question.encode("utf-8")).hexdigest()[:16]
+        vector_id = f"faq_{tenant.company_id}_{qhash}"
         points.append(
             {
                 "id": vector_id,
@@ -52,8 +54,13 @@ async def upload_faq(tenant: Tenant, items: list[dict]) -> dict:
 
 
 async def _record_faq_source(company_id: str, question: str, answer: str, vector_id: str) -> None:
+    """(company_id, question) 기준 멱등 — 같은 질문 재업로드 시 이력을 덮어쓴다."""
     async with (await postgres.init_pool()).connection() as conn:
         async with conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM faq_sources WHERE company_id=%s AND question=%s",
+                (company_id, question),
+            )
             await cur.execute(
                 "INSERT INTO faq_sources (company_id, question, answer, status, vector_id) "
                 "VALUES (%s,%s,%s,'embedded',%s)",
