@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import AsyncIterator
 
 from app.autocomplete import suggester
+from app.core.config import settings
 from app.core.exceptions import LLMTimeout, SessionNotFound
 from app.db import repositories as repo
 from app.llm.client import get_llm
@@ -110,11 +111,19 @@ async def chat_sync(tenant: Tenant, *, session_id: str | None, message: str) -> 
         gen = await gen_node.generate(state)
         answer = gen.get("answer", "")
         usage = gen.get("usage", usage)
-        grounded = await verify_node.verify(
-            answer=answer, retrieved_context=state.get("retrieved_context", "")
-        )
-        if not grounded:
-            answer = prompts.FALLBACK["no_ground"]
+        # verify 는 선택(기본 OFF). chitchat·빈 컨텍스트는 검증 대상이 아니라 스킵.
+        if (
+            settings.verify_enabled
+            and route != "chitchat"
+            and state.get("retrieved_context", "").strip()
+        ):
+            grounded = await verify_node.verify(
+                answer=answer,
+                retrieved_context=state.get("retrieved_context", ""),
+                business_info=state.get("business_info", ""),
+            )
+            if not grounded:
+                answer = prompts.FALLBACK["no_ground"]
         matched = True
 
     result = ChatResult(
