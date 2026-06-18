@@ -2,10 +2,11 @@ from app.tenancy import router
 from app.tenancy.registry import get_registry
 
 
-def test_three_tenants():
+def test_tenants_registered():
     reg = get_registry()
     ids = {t.company_id for t in reg.all()}
-    assert ids == {"pizza", "chinese", "chicken"}
+    # 최소 3개 파일럿 + 온보딩된 신규 업체(bunsik) 포함
+    assert {"pizza", "chinese", "chicken"} <= ids
 
 
 def test_resolve_valid_and_invalid():

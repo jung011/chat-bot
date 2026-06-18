@@ -18,10 +18,11 @@ from app.llm.models import Stage, model_for
 from app.memory import short_term
 from app.orchestration import prompts
 from app.orchestration.state import RAGState, add_usage
-from app.mcp import domain_client
+from app.mcp import domain_client, faq_client
 from app.retrieval import hybrid, reranker, tool_retriever
 
 DOCUMENTS_COLLECTION = "documents"
+FAQ_SCORE_FLOOR = 0.15   # 이 미만의 무관 FAQ 는 컨텍스트에서 제외(노이즈 방지)
 
 
 def _format_context(hits) -> str:
@@ -34,26 +35,48 @@ def _format_context(hits) -> str:
 
 
 async def retrieve_documents(state: RAGState) -> dict:
-    """rag 경로: 문서 검색 → 컨텍스트. 결과 없으면 fail(C)."""
+    """rag 경로: 문서 검색 + FAQ top-K 를 함께 컨텍스트로 수집(복합 질문 대응).
+
+    문서(documents)와 FAQ(업체 서버 search_faq)를 모두 검색해 병합한다. 둘 다 비면 fail.
+    FAQ 를 검색 소스로 함께 써서, FAQ-전용 정보(주차·포장 등)도 복합 질문에서 답할 수 있다.
+    """
     question = state.get("rewritten") or state["question"]
+
+    # 1) 문서 검색 (Hybrid + Rerank)
     hits = await hybrid.search(
-        DOCUMENTS_COLLECTION,
-        question,
-        company_id=state["company_id"],
-        top_k=state.get("doc_top_k", settings.doc_top_k),
-        alpha=0.5,
-        text_field="text",
+        DOCUMENTS_COLLECTION, question, company_id=state["company_id"],
+        top_k=state.get("doc_top_k", settings.doc_top_k), alpha=0.5, text_field="text",
     )
     ranked = reranker.rerank(
         question, hits, top_n=state.get("doc_top_n", settings.doc_top_n), text_field="text"
     )
-    if not ranked:
-        return {"mode": "fail"}  # C: 근거 없음
-    sources = [
-        {"type": "document", "title": h.payload.get("title", "문서"), "score": round(h.score, 3)}
-        for h in ranked
+
+    # 2) FAQ 검색 (업체 FAQ 서버 search_faq, 점수 floor 로 무관 항목 제외)
+    faq_items = [
+        f for f in await faq_client.search_faq(
+            server_url=state.get("faq_server_url", ""), question=question, top_k=5
+        )
+        if f.get("score", 0) >= FAQ_SCORE_FLOOR and f.get("answer")
     ]
-    return {"mode": "generate", "retrieved_context": _format_context(ranked), "sources": sources}
+
+    parts, sources = [], []
+    if ranked:
+        parts.append(_format_context(ranked))
+        sources += [
+            {"type": "document", "title": h.payload.get("title", "문서"), "score": round(h.score, 3)}
+            for h in ranked
+        ]
+    if faq_items:
+        parts.append(
+            "\n".join(f"[FAQ] Q: {f['question']} / A: {f['answer']}" for f in faq_items)
+        )
+        sources += [
+            {"type": "faq", "title": f["question"], "score": round(f["score"], 3)} for f in faq_items
+        ]
+
+    if not parts:
+        return {"mode": "fail"}  # C: 근거 없음
+    return {"mode": "generate", "retrieved_context": "\n".join(parts), "sources": sources}
 
 
 async def prep_chitchat(state: RAGState) -> dict:

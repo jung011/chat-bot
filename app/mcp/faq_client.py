@@ -42,7 +42,7 @@ def _parse_result(call_result) -> dict:
 
 
 async def match_faq(*, server_url: str, question: str) -> dict:
-    """업체 FAQ 매칭(원격). 서버 미가동/오류 시 {matched: False} 로 통과."""
+    """업체 FAQ 매칭(원격, 0단계 즉답). 서버 미가동/오류 시 {matched: False} 로 통과."""
     if not server_url:
         return {"matched": False}
 
@@ -58,3 +58,23 @@ async def match_faq(*, server_url: str, question: str) -> dict:
     except Exception as e:
         logger.warning("FAQ 외부 서버(%s) 연결 실패 → 통과(rag 로): %s", server_url, e)
         return {"matched": False}
+
+
+async def search_faq(*, server_url: str, question: str, top_k: int = 5) -> list[dict]:
+    """FAQ 후보 top-K(임계값 없음) — 복합/일반 질문의 생성 컨텍스트용. 실패 시 []."""
+    if not server_url:
+        return []
+
+    async def _call() -> list[dict]:
+        async with streamablehttp_client(server_url) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool("search_faq", {"question": question, "top_k": top_k})
+                data = _parse_result(result)
+                return data.get("results", []) if isinstance(data, dict) else []
+
+    try:
+        return await asyncio.wait_for(_call(), timeout=_CONNECT_TIMEOUT)
+    except Exception as e:
+        logger.warning("FAQ search 외부 서버(%s) 실패: %s", server_url, e)
+        return []
