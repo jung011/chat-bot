@@ -113,8 +113,11 @@ scripts/         init_db·seed_demo·schema.sql
 
 ## 파일럿 단순화 (운영 전환 시 교체)
 
-- **임베딩**: 결정적 `HashEmbedder`(어휘 기반, 키 불필요). 운영은 실제 임베딩 모델로 교체
-  (`app/retrieval/embedder.py` 의 `Embedder` 인터페이스). 조사/어형이 다른 의역 매칭은 실제 모델 필요.
+- **임베딩**: 백엔드 선택식 — `EMBEDDING_BACKEND=hash`(결정적 `HashEmbedder`, 어휘 기반, 키 불필요, 기본)
+  | `fastembed`(로컬 ONNX 실제 모델, 키 불필요 — `paraphrase-multilingual-MiniLM-L12-v2`, dim 384).
+  `app/retrieval/embedder.py` 의 `Embedder` 인터페이스 / `get_embedder()` 로 전환. 조사/어형이 다른
+  의역 매칭(예: "콜키지랑"↔"콜키지")은 `fastembed` 에서 해결(hash 는 토큰 불일치로 실패).
+  ⚠️ 공유 `documents` 와 FAQ 점수 floor 정합 위해 오케스트레이터·벤더 서버 **동일 backend/model** 필요(§08 §9.3).
 - **MCP 서버 = 외부 독립 프로젝트(A안)**: FAQ·일반 서버가 상위 `git/` 폴더의 **별도 프로젝트**
   (`faq-{pizza,chinese,chicken}`, `general-{pizza,chinese,chicken}`)로 분리됨. 각각 **자체
   pyproject + venv + 코드**(embedder/검색 로직 자체 보유, 다른 프로젝트 import 0) — 외부 벤더가
@@ -123,7 +126,7 @@ scripts/         init_db·seed_demo·schema.sql
     매칭/도구 로직·임계값은 **서버가 소유** — 오케스트레이터에 중복 없음(서버 미가동 시 FAQ 는 통과→rag, 도구는 답변 실패).
   - **데이터 적재도 벤더 소유**: 문서는 general 서버 `ingest_documents`, FAQ 는 faq 서버 `upsert_faq` 가 적재(임베딩 포함).
     오케스트레이터(seed·admin/faq)는 적재를 서버에 위임만 한다. 자동완성(autocomplete_q)만 오케스트레이터 UX 기능으로 직접 생성.
-  - 데이터 저장소(Qdrant)는 공유(컬렉션/필터 격리). 코드/의존성/적재 책임 분리. **임베딩 규약(HashEmbedder·dim 384)은 양쪽 동일해야 맞물림**(공유 컬렉션 결합).
+  - 데이터 저장소(Qdrant)는 공유(컬렉션/필터 격리). 코드/의존성/적재 책임 분리. **임베딩 규약(`EMBEDDING_BACKEND`/모델/dim)은 양쪽 동일해야 맞물림**(공유 `documents` + FAQ 점수 floor 정합, §08 §9.3).
 - **Tool RAG = 서버 디스커버리**: `scripts/index_tools.py` 가 각 general 서버의 MCP `list_tools` 로 도구를
   발견해 `tools` 컬렉션에 업체별 태깅 적재(하드코딩 카탈로그 없음 — 도구 정의의 단일 출처 = 서버).
   `tool_retriever.retrieve_tools(query, company_id=...)` 가 그 업체 도구로만 후보 검색.

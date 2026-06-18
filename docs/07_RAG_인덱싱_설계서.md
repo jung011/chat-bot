@@ -6,7 +6,7 @@
 > **상태:** 초안 (v1)
 
 > ⚠️ **구현 현황(as-built):** [12_구현_아키텍처.md](./12_구현_아키텍처.md) 참고. 주요 차이:
-> - **임베딩 = 결정적 `HashEmbedder`**(어휘 기반, 키 불필요, dim 384). 운영은 실제 모델로 교체.
+> - **임베딩 = 백엔드 선택식**(`EMBEDDING_BACKEND`): `hash`(결정적 `HashEmbedder`, 어휘 기반, 키 불필요, dim 384, 기본) | `fastembed`(로컬 ONNX 실제 모델, 키 불필요 — 파일럿 `paraphrase-multilingual-MiniLM-L12-v2`, dim 384, 한국어 의미 유사도). 코드 변경 없이 환경변수로 전환. ⚠️ 공유 `documents` 와 FAQ 점수 floor 정합을 위해 **오케스트레이터·벤더 서버가 동일 backend/model** 이어야 함(§08 §9.3).
 > - **적재(ingestion)는 벤더 서버가 소유**: 문서 → 일반 서버 `ingest_documents`(청킹+임베딩+적재), FAQ → faq 서버 `upsert_faq`. 오케스트레이터는 위임만.
 > - 오케스트레이터 `indexing/` 은 **자동완성 질문 생성(`generate_autocomplete`)만** 담당(질문생성=LLM, 벤더 서버엔 LLM 없음).
 > - **Tool RAG 색인 = 서버 디스커버리**(`scripts/index_tools.py`, `list_tools`). `documents`/`tools`/`autocomplete_q` 에 `company_id` payload 인덱스.
@@ -112,7 +112,7 @@
 
 ## 7. 결정 필요사항
 - [ ] 파서 선정(Docling vs Upstage vs 혼합)
-- [ ] 임베딩 모델 확정(한국어 성능 우선)
+- [x] 임베딩 모델 — 파일럿: `fastembed` + `paraphrase-multilingual-MiniLM-L12-v2`(dim 384, 한국어 다국어). 백엔드는 `EMBEDDING_BACKEND` 로 `hash`↔`fastembed` 전환(§08 §9.3). 운영 시 Voyage/OpenAI 등 상위 모델로 재평가 가능
 - [ ] 청크 크기/전략 업체 도메인별 튜닝값
 - [ ] 청크당 생성 질문 수 N, 필터 규칙
 - [ ] 재인덱싱 자동화 방식(스케줄 vs 수동 트리거)

@@ -37,10 +37,15 @@
 
 | 항목 | 내용 |
 |---|---|
-| 역할 | 질문 임베딩 → 업체 FAQ 벡터검색 → 임계값 매칭 → 즉답/통과 |
-| 입력 | `{question}` |
-| 출력 | `{matched: bool, answer?: string, score: float}` |
-| 설정 | `company_id`, `vector_db`, `threshold` (config.yaml) |
+| 역할 | 질문 임베딩 → 업체 FAQ 벡터검색 → ① 임계값 즉답(`match_faq`) / ② top-K 후보(`search_faq`) |
+| 입력 | `{question}` (+ `search_faq` 는 `top_k`) |
+| 출력 | `match_faq`: `{matched, answer?, score}` · `search_faq`: `{results:[{question,answer,score}]}` |
+| 설정 | `company_id`, `embedding_backend/model`, `faq_threshold` (환경변수) |
+
+> **두 가지 쓰임(정공법)**: `match_faq` 는 0단계 즉답(단일 질문 빠른 처리), `search_faq` 는 임계값 없이
+> 후보를 돌려줘 rag/agent 가 문서·도구와 **병합**한다. 복합 질문(예: "주차+마르게리따 가격")에서 FAQ-전용
+> 정보가 누락되지 않게 한다. 오케스트레이터는 복합 질문이면 0단계 즉답을 건너뛰고(한쪽만 답하는 오즉답 방지)
+> rag/agent 로 보내 `search_faq` 로 다건을 함께 답한다.
 
 **config 예시**
 ```yaml
@@ -290,8 +295,12 @@ Tool RAG 검색 정확도 = description 품질. 규칙:
 **FAQ 서버**
 | 도구 | 시그니처 | 반환 |
 |---|---|---|
-| `match_faq` | `(question: str)` | `{matched: bool, answer?, question?, score: float}` |
+| `match_faq` | `(question: str)` | `{matched: bool, answer?, question?, score: float}` — 0단계 즉답(임계값 이상 1건) |
+| `search_faq` | `(question: str, top_k: int = 5)` | `{results: [{question, answer, score}]}` — 임계값 없는 top-K(생성 컨텍스트용) |
 | `upsert_faq` | `(company_id: str, items: [{question, answer, category?}])` | `ok(accepted: int)` |
+
+> `search_faq` 는 복합 질문 대응의 핵심이다. 오케스트레이터 rag/agent 경로가 **임계값 없이** 후보 top-K 를
+> 받아 문서·도구 결과와 **병합**한다(§3 정공법). `match_faq` 는 단일 질문의 빠른 즉답(0단계)용으로 별도 유지.
 
 **일반 서버**
 | 도구 | 시그니처 | 반환 |
@@ -301,11 +310,26 @@ Tool RAG 검색 정확도 = description 품질. 규칙:
 
 > 질의 도구는 **이름·개수 자유**: `list_tools` 디스커버리로 발견되고 description(§7) 품질로 매칭된다. 단 모든 도구는 **`company_id` 인자 필수**.
 
-### 9.3 임베딩 규약 (일반 서버 — 필수)
-- 일반 서버는 **공유 `documents` 컬렉션**을 쓰므로 **오케스트레이터와 동일 임베딩**이어야 검색이 맞물린다(불일치 시 문서검색 전부 깨짐).
-- 파일럿 기준: **`HashEmbedder`, dim 384** — 토큰화 `[0-9A-Za-z가-힣]+`(소문자), sha1 2-버킷 가산, L2 정규화, 코사인 거리.
-- 운영(실제 임베딩 모델) 시: **모델·버전·차원을 오케스트레이터와 통일** 하거나, **벤더별 `documents` 컬렉션 분리**(완전 독립) 중 택1.
-- **FAQ 서버는 예외**: `faq_<id>` 를 자기만 읽고/쓰므로(오케스트레이터 미접근) 임베더 자유 — ingest 와 match 가 서버 내부에서 일치하면 됨.
+### 9.3 임베딩 규약 (필수) — ⚠️ 임베딩 일관성
+
+임베더는 **백엔드 선택식**이다(환경변수 `EMBEDDING_BACKEND`):
+- **`hash`**(기본): `HashEmbedder`, dim 384 — 토큰화 `[0-9A-Za-z가-힣]+`(소문자), sha1 2-버킷 가산, L2 정규화. 의존성·키 불필요(데모/오프라인).
+- **`fastembed`**: 로컬 ONNX 실제 임베딩 모델(API 키 불필요). 파일럿 모델 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`(dim 384) — 한국어 의미 유사도 확보(조사/어형 변화에 강함).
+
+**(A) 일반 서버 — 강제 일치(hard):** 공유 `documents` 컬렉션을 오케스트레이터와 함께 쓰므로
+**backend·model·dim 을 오케스트레이터와 100% 동일**하게 맞춰야 한다. 불일치 시 질의 벡터와 저장 벡터가
+직교(코사인 ≈ 0)해 **문서검색이 전부 깨진다.** (또는 벤더별 `documents` 컬렉션 분리로 완전 독립화 — 택1)
+
+**(B) FAQ 서버 — 내부 일치 + 점수 분포 정합:**
+- `faq_<id>` 는 자기만 읽고/쓰지만, **적재(ingest)와 검색(match/search)이 반드시 동일 임베더**여야 한다.
+  ⚠️ 흔한 함정: 적재는 `hash`, 검색은 `fastembed` 처럼 어긋나면 같은 컬렉션 안에서도 코사인 ≈ 0 → **검색 0건**.
+  서버 내부 모든 임베딩 경로를 단일 `get_embedder()` 로 통일할 것.
+- 오케스트레이터는 `search_faq` 점수에 **고정 floor(0.3)** 를 적용한다. floor 는 `fastembed`(관련 0.48~0.92,
+  무관 ~0.16) 분포 기준이므로, **시스템과 같은 backend/model 사용을 권장**(다른 모델이면 점수 분포가 달라
+  floor 가 오작동할 수 있음).
+
+> 요약: documents(일반 서버)는 **반드시** 동일, faq(FAQ 서버)는 **내부 일치 필수 + 시스템과 동일 모델 권장**.
+> dim 은 hash·파일럿 fastembed 모두 384 로 동일하지만, **모델이 다르면 벡터 호환 불가**(재색인 필요).
 
 ### 9.4 데이터 스키마 (공유 컬렉션)
 - `documents` payload: `{company_id, doc_id, chunk_index, text, title, category, source_uri}`. 오케스트레이터 rag 가 `text/title/category` 를 읽고 `company_id` 로 필터(§04 §3.2).
@@ -318,5 +342,7 @@ Tool RAG 검색 정확도 = description 품질. 규칙:
 
 ### 9.6 온보딩 후 자가 검증
 - `match_faq("등록한 FAQ 질문")` → 즉답(matched=true) 반환?
-- `ingest_documents(docs)` 적재 후, 오케스트레이터 rag 질의가 그 문서로 답하나?
+- `search_faq("등록한 FAQ 질문")` → 후보 top-K 에 해당 FAQ 가 **점수 0.3 이상**으로 포함?
+  (적재≠검색 임베더 불일치면 점수 ≈ 0 으로 나옴 — §9.3 함정)
+- `ingest_documents(docs)` 적재 후, 오케스트레이터 rag 질의가 그 문서로 답하나?(임베딩 일치 확인)
 - 타 `company_id` 데이터가 섞여 나오지 않나?(격리)
