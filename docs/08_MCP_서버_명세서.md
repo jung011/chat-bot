@@ -219,18 +219,43 @@ samplepkg의 "3군데 수정"이 MCP에선 간소화된다.
 | 3 | Tool RAG 인덱스에 도구 description 임베딩 재적재 |
 | 4 | 본 문서 §5.4에 명세 추가 |
 
+### 5.6 적재/관리 도구 (as-built — 데이터 소유=벤더)
+
+데이터 적재를 벤더 서버가 소유한다. 아래 도구는 **고객 질의용이 아니므로 Tool RAG 후보에서 제외**(`index_tools.py` denylist).
+
+#### match_faq  (server: faq-<id>)
+- 목적: 질문을 업체 FAQ 와 시맨틱 매칭(0단계 인터셉트, §3).
+- 파라미터: `question`(str, 필수)  ※ 임계값/컬렉션은 서버 config 소유
+- 반환: `{matched: bool, answer?, question?, score}`
+- 호출: 오케스트레이터 `faq_client`
+
+#### upsert_faq  (server: faq-<id>)
+- 목적: 업체 FAQ 를 적재(임베딩→자기 `faq_<id>` 컬렉션). 결정적 ID(질문 해시)로 멱등.
+- 파라미터: `company_id`(str, 인터페이스용) / `items`(list, [{question, answer, category?}])
+- 반환: `ok(accepted=<int>)`
+- 호출: 오케스트레이터 `POST /v1/admin/faq` → 위임, 또는 벤더 직접
+
+#### ingest_documents  (server: general-<id>)
+- 목적: 업체 문서를 청킹+임베딩해 공유 `documents` 컬렉션에 적재(company_id 태깅). 결정적 ID 로 멱등.
+- 파라미터: `company_id`(str, 인터페이스용) / `docs`(list, [{doc_id, title, category, text, source_uri}])
+- 반환: `ok(chunks=<int>)`
+- 호출: 오케스트레이터 seed / 벤더 직접
+
 ---
 
-## 6. 통신 규약
+## 6. 통신 규약 (as-built)
 
 | 항목 | 내용 |
 |---|---|
-| 호출 주체 | 오케스트레이터(`app/mcp/client.py`) |
-| company_id 전달 | **모든 도구 호출에 필수** (격리) |
-| 에러 형식 | `{ "error": { "code", "message" } }` |
-| 타임아웃/재시도 | 도구별 타임아웃, 멱등 도구만 재시도 |
+| **전송/프로토콜** | **MCP over streamable-http (HTTP)**. 각 업체 서버가 `/mcp` 로 노출(+`/health` REST). FAQ 9001~3 / 일반 9101~3 |
+| 호출 주체 | 오케스트레이터의 `app/mcp/faq_client.py`(FAQ) · `domain_client.py`(도메인) — **원격 전용**(인프로세스 폴백/레지스트리 없음) |
+| 도구 발견 | `scripts/index_tools.py` 가 일반 서버 `list_tools` 로 디스커버리 → Tool RAG(`tools`) 적재. 정적 카탈로그 없음 |
+| company_id 전달 | **모든 도구 호출에 필수**. 비회원 구조라 **요청 body/query 의 company_id**(§03 §1.2)를 받아 주입. 적재 도구는 서버가 자기 config 의 company_id 사용 |
+| 결과 형식 | 도구는 ok/fail dict(§5.1) 반환 → MCP 전송 시 `structuredContent` 또는 `content[].text`(JSON)로 래핑. 클라이언트가 둘 다 파싱 |
+| 에러 형식 | **두 층위**: ① 도구층 = `fail()` → `{success:false, message}`(§5.1) · ② API층 = 공통 envelope `{error:{code,message,details}}`(§03 §1.3). MCP 전송 오류는 클라이언트가 잡아 처리 |
+| 타임아웃/재시도 | 클라이언트 타임아웃(FAQ 5s / 도메인 10s), 멱등(읽기) 도구만 재시도. 서버 미가동 시 FAQ→통과(rag), 도메인→답변 실패 |
 
-> company_id는 오케스트레이터가 토큰에서 받아 도구 호출에 주입. 도구는 받은 company_id로 데이터 필터.
+> 통신 경로는 인프로세스가 아니라 **HTTP(streamable-http)** 다 — 업체 서버가 외부 독립 프로세스이기 때문(§02 as-built, [12](./12_구현_아키텍처.md) §4).
 
 ## 7. 도구 description 작성 규칙 (중요)
 
@@ -240,9 +265,9 @@ Tool RAG 검색 정확도 = description 품질. 규칙:
 3. 다른 도구와 **구분되게**(중복 회피).
 4. 한 도구 = 한 책임.
 
-## 8. 결정 필요사항
-- [ ] MCP 통신 방식/포트(표준 MCP 프로토콜 vs 내부 HTTP)
-- [ ] 도메인 서버 분리 단위 최종 확정(store/order 통합 여부)
-- [ ] FAQ 서버 인스턴스 배포 방식(상시 vs 스케일-투-제로)
-- [ ] 도구 인덱싱(설명 임베딩) 자동화 시점
-- [ ] 도구 테스트 방식 — LLM 호출 없이 루프 검증하는 **테스트 대역(스크립트형 모델 stub)** 도입 여부 → 향후 평가/테스트 문서(11)에서 확정
+## 8. 결정 필요사항 (현황)
+- [x] MCP 통신 방식/포트 → **streamable-http(HTTP)**, FAQ 9001~3 / 일반 9101~3 (`/mcp`)
+- [x] 도메인 서버 분리 단위 → **업체별 "일반 서버" 1개에 documents·store·order 도구 통합**
+- [x] 도구 인덱싱 자동화 → `scripts/index_tools.py` 가 `list_tools` 디스커버리로 적재
+- [x] 도구 테스트(LLM 없이) → 테스트는 `anthropic` 고정(키 없음→degrade)로 결정적. 도구 자체 테스트는 외부 벤더 프로젝트 소유
+- [ ] FAQ/일반 서버 배포 방식(상시 vs 스케일-투-제로) — 미정

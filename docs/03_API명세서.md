@@ -352,15 +352,18 @@ DELETE /v1/sessions/{session_id}?company_id=pizza
 ```json
 {
   "data": {
-    "status": "ok",
+    "status": "ok",            // postgres/redis/vector_db 모두 ok && llm ok 이면 ok, 아니면 degraded
     "dependencies": {
+      "postgres": "ok",
+      "redis": "ok",
       "vector_db": "ok",
-      "llm": "ok",
-      "redis": "ok"
+      "llm": "ok"             // 또는 "not_configured" (LLM 미설정 — FAQ/검색은 동작, 생성만 폴백)
     }
   }
 }
 ```
+
+> `llm: not_configured` 면 status 는 `degraded`(코어 DB 가 ok 여도). LLM 은 외부 호출 없이 키/CLI 설정 여부만 본다.
 
 ---
 
