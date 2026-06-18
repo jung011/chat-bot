@@ -35,15 +35,19 @@ pip install -e ".[dev]"
 python scripts/init_db.py     # §04 테이블 생성
 python scripts/seed_demo.py   # 피자/중국/치킨 메뉴·정책·FAQ·도구 적재
 
-# (선택) 업체별 MCP 서버 6개 기동 — 별도 터미널 (A안)
-python scripts/run_mcp_servers.py
-#   FAQ:  pizza 9001 / chinese 9002 / chicken 9003
-#   일반: pizza 9101 / chinese 9102 / chicken 9103
-#   (FAQ만: python scripts/run_faq_servers.py)
+# (선택) 외부 MCP 서버 6개 기동 — 독립 프로젝트(상위 git/ 폴더의 형제), 별도 터미널 (A안)
+python scripts/run_external_servers.py
+#   FAQ:  faq-pizza 9001 / faq-chinese 9002 / faq-chicken 9003
+#   일반: general-pizza 9101 / general-chinese 9102 / general-chicken 9103
+#   (각 프로젝트는 자체 venv 필요 — 각 폴더에서 python -m venv .venv && pip install -e .)
 
 # 메인 앱 실행 (권장 — 모든 OS에서 안전)
 python run.py
 ```
+
+> **MCP 서버는 별도 독립 프로젝트**로 분리됨(상위 `git/` 폴더의 `faq-*`, `general-*`).
+> 각각 자체 의존성/venv 를 가진 FastAPI+FastMCP 서비스(외부 벤더가 개발한 것처럼). 오케스트레이터는
+> 표준 MCP 프로토콜로 호출하며, FAQ 는 미가동 시 자체 retrieval 폴백, 일반 도구는 원격 전용.
 
 > MCP 서버를 띄우지 않아도 동작한다(오케스트레이터가 인프로세스 호출로 자동 폴백).
 > 띄우면 FAQ 인터셉트·도구 실행이 **업체별 독립 MCP 서버**(streamable-http)로 처리된다.
@@ -92,8 +96,11 @@ app/
   llm/           Claude 클라이언트 + 모델 티어(Haiku/Sonnet/Opus)
   memory/        Redis 단기 대화
   autocomplete/  prefix+시맨틱 추천
-  mcp/           client(인프로세스) · faq_client · domain_client(업체별 서버 MCP 호출)
-mcp_servers/     faq_template(업체별 FAQ) · general(업체별 일반) · domains(도메인 도구 단일소스)
+  mcp/           faq_client · domain_client(외부 서버 MCP 호출) · tool_catalog(Tool RAG 카탈로그)
+
+# MCP 서버는 외부 독립 프로젝트(상위 git/ 폴더):
+#   faq-{pizza,chinese,chicken}      FastAPI+FastMCP, match_faq (포트 9001~3)
+#   general-{pizza,chinese,chicken}  FastAPI+FastMCP, 도메인 도구 7개 (포트 9101~3)
 indexing/        파싱→청킹→임베딩→적재 + 질문 생성
 scripts/         init_db·seed_demo·schema.sql
 ```
@@ -104,13 +111,13 @@ scripts/         init_db·seed_demo·schema.sql
 
 - **임베딩**: 결정적 `HashEmbedder`(어휘 기반, 키 불필요). 운영은 실제 임베딩 모델로 교체
   (`app/retrieval/embedder.py` 의 `Embedder` 인터페이스). 조사/어형이 다른 의역 매칭은 실제 모델 필요.
-- **FAQ 서버(A안, 실제 분리)**: 업체별 FAQ MCP 서버가 **독립 프로세스/포트**로 뜬다
-  (`mcp_servers/faq_template` 코드 1벌 + `config/faq_<id>.yaml` 설정만 다르게, §01 §6).
-  오케스트레이터는 `app/mcp/faq_client.py` 로 **표준 MCP 프로토콜(streamable-http)** 호출
-  → 미기동 시 인프로세스 폴백. (벡터DB 는 아직 공용 Qdrant + 컬렉션 `faq_<id>`; 인스턴스 분리는 운영 전환.)
-- **일반(도메인) MCP 서버(A안, 실제 분리)**: 업체별 일반 MCP 서버가 **독립 프로세스/포트**(9101~3)로 뜬다
-  (`mcp_servers/general` — 도메인 도구 `documents·store·order` 7개를 묶음, 코드 1벌 + `config/general_<id>.yaml`).
-  오케스트레이터는 `app/mcp/domain_client.py` 로 **표준 MCP 프로토콜** 호출 → 미기동 시 인프로세스 폴백.
+- **MCP 서버 = 외부 독립 프로젝트(A안)**: FAQ·일반 서버가 상위 `git/` 폴더의 **별도 프로젝트**
+  (`faq-{pizza,chinese,chicken}`, `general-{pizza,chinese,chicken}`)로 분리됨. 각각 **자체
+  pyproject + venv + 코드**(embedder/검색 로직 자체 보유, 다른 프로젝트 import 0) — 외부 벤더가
+  독립 개발한 것처럼. 모두 **FastAPI + FastMCP**(streamable-http, `/mcp` + `/health`).
+  - 오케스트레이터는 `app/mcp/faq_client.py`·`domain_client.py` 로 **표준 MCP 프로토콜** 호출.
+  - FAQ 는 서버 미가동 시 오케스트레이터 자체 retrieval 로 폴백, 일반 도구는 원격 전용(미가동 시 답변 실패 처리).
+  - 데이터(Qdrant)는 공유(컬렉션/필터 격리). 코드/의존성만 분리.
 - **Tool RAG company_id 필터**: `tools` 컬렉션을 업체별로 태깅 적재(`index_tools(catalog, company_id)`).
   `tool_retriever.retrieve_tools(query, company_id=...)` 가 그 업체 도구로만 후보를 검색 → LLM 에 다른 업체 도구를 노출하지 않음.
 - **관리자 인증**: 단일 공유 토큰(`ADMIN_TOKEN`). 운영은 `admins` 테이블 기반 per-company.

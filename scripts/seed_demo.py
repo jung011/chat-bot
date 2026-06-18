@@ -17,7 +17,7 @@ if sys.platform == "win32":
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db import postgres, redis_client  # noqa: E402
-from app.mcp import client as mcp_client  # noqa: E402
+from app.mcp.tool_catalog import catalog as tool_catalog  # noqa: E402
 from app.retrieval import vector_store  # noqa: E402
 from app.services import admin_service  # noqa: E402
 from app.tenancy import router as tenant_router  # noqa: E402
@@ -127,7 +127,7 @@ async def main() -> None:
 
     # 도구는 업체별로 적재(payload.company_id) → retrieve_tools(company_id) 필터 대응.
     # 파일럿은 3개 업체가 동일 도구 세트를 보유(공용 코드 1벌)하므로 카탈로그를 업체별로 태깅 적재.
-    catalog = mcp_client.catalog()
+    catalog = tool_catalog()
     total_tools = 0
     for company_id in DOCS:
         total_tools += await pipeline.index_tools(catalog, company_id)

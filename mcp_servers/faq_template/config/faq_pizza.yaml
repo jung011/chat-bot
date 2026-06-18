@@ -1,7 +1,0 @@
-# 피자집 FAQ 서버 인스턴스 설정 (§08 §3, A안). 코드 1벌, 이 설정만 업체별로 다르게.
-company_id: pizza
-collection: faq_pizza
-threshold: 0.85
-vector_db: "localhost:6333"   # A안 전환 시 qdrant-pizza:6333
-host: "127.0.0.1"
-port: 9001
