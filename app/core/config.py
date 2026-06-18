@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     admin_token: str = ""
 
     # 검색/임베딩 (§07 §4.1) — 기본값, tenants.yaml defaults 로 덮어씀
+    # (FAQ 임계값은 faq 서버가 소유 — 오케스트레이터에 두지 않음)
     embedding_dim: int = 384
-    faq_threshold: float = 0.85
     doc_top_k: int = 20
     doc_top_n: int = 5
     tool_top_k: int = 5

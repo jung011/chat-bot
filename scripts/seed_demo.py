@@ -17,7 +17,6 @@ if sys.platform == "win32":
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db import postgres, redis_client  # noqa: E402
-from app.mcp.tool_catalog import catalog as tool_catalog  # noqa: E402
 from app.retrieval import vector_store  # noqa: E402
 from app.services import admin_service  # noqa: E402
 from app.tenancy import router as tenant_router  # noqa: E402
@@ -99,7 +98,7 @@ FAQ = {
 async def _reset() -> None:
     """멱등 시드 — 관련 벡터 컬렉션·자동완성 풀·FAQ 이력을 초기화(재실행 시 중복 방지)."""
     client = vector_store.get_client()
-    collections = ["documents", "autocomplete_q", "tools"]
+    collections = ["documents", "autocomplete_q"]  # tools 는 scripts/index_tools.py 가 관리
     for cid in DOCS:
         collections.append(tenant_router.resolve(cid).faq.collection)  # faq_<id>
     for coll in collections:
@@ -125,13 +124,9 @@ async def main() -> None:
         )
         print(f"[{company_id}] docs chunks={stats['chunks']} acq={stats['questions']} faq={faq_res['accepted']}")
 
-    # 도구는 업체별로 적재(payload.company_id) → retrieve_tools(company_id) 필터 대응.
-    # 파일럿은 3개 업체가 동일 도구 세트를 보유(공용 코드 1벌)하므로 카탈로그를 업체별로 태깅 적재.
-    catalog = tool_catalog()
-    total_tools = 0
-    for company_id in DOCS:
-        total_tools += await pipeline.index_tools(catalog, company_id)
-    print(f"[tools] indexed {total_tools} tool entries ({len(catalog)} tools × {len(DOCS)} 업체)")
+    # 도구(tools 컬렉션)는 외부 general 서버에서 list_tools 로 디스커버리해 적재한다:
+    #   general 서버 기동 후 → python scripts/index_tools.py
+    print("[tools] 외부 서버 디스커버리로 적재 — 'python scripts/index_tools.py' 실행 필요")
 
     await postgres.close_pool()
     await redis_client.close_client()

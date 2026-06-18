@@ -14,9 +14,6 @@ from app.orchestration.state import RAGState
 
 async def faq_intercept(state: RAGState) -> dict:
     res = await faq_client.match_faq(
-        company_id=state["company_id"],
-        collection=state["faq_collection"],
-        threshold=state["faq_threshold"],
         server_url=state.get("faq_server_url", ""),
         question=state["question"],
     )

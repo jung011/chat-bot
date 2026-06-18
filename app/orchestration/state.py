@@ -20,9 +20,7 @@ class RAGState(TypedDict, total=False):
     history: list[dict]           # [{role, content}]
     persona: str                  # 업체 페르소나(§06 §3)
     business_info: str            # 업체 영업정보 텍스트(§06 §4.4)
-    faq_collection: str
-    faq_threshold: float
-    faq_server_url: str           # 업체별 FAQ MCP 서버 URL(A안). 비면 인프로세스.
+    faq_server_url: str           # 업체별 FAQ MCP 서버 URL(A안). 매칭은 서버가 담당.
     general_server_url: str       # 업체별 일반(도메인) MCP 서버 URL(A안). 비면 인프로세스.
     doc_top_k: int
     doc_top_n: int
@@ -50,8 +48,6 @@ def initial_state(
     history: list[dict],
     persona: str,
     business_info: str,
-    faq_collection: str,
-    faq_threshold: float,
     faq_server_url: str,
     general_server_url: str,
     doc_top_k: int,
@@ -64,8 +60,6 @@ def initial_state(
         history=history,
         persona=persona,
         business_info=business_info,
-        faq_collection=faq_collection,
-        faq_threshold=faq_threshold,
         faq_server_url=faq_server_url,
         general_server_url=general_server_url,
         doc_top_k=doc_top_k,

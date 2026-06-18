@@ -41,13 +41,16 @@ python scripts/run_external_servers.py
 #   일반: general-pizza 9101 / general-chinese 9102 / general-chicken 9103
 #   (각 프로젝트는 자체 venv 필요 — 각 폴더에서 python -m venv .venv && pip install -e .)
 
+# 외부 서버 기동 후, 도구를 디스커버리해 Tool RAG 색인 (general 서버 list_tools)
+python scripts/index_tools.py
+
 # 메인 앱 실행 (권장 — 모든 OS에서 안전)
 python run.py
 ```
 
 > **MCP 서버는 별도 독립 프로젝트**로 분리됨(상위 `git/` 폴더의 `faq-*`, `general-*`).
 > 각각 자체 의존성/venv 를 가진 FastAPI+FastMCP 서비스(외부 벤더가 개발한 것처럼). 오케스트레이터는
-> 표준 MCP 프로토콜로 호출하며, FAQ 는 미가동 시 자체 retrieval 폴백, 일반 도구는 원격 전용.
+> 표준 MCP 프로토콜로 호출(원격 전용). 매칭/도구 로직은 서버가 소유하므로 오케스트레이터엔 중복 없음.
 
 > MCP 서버를 띄우지 않아도 동작한다(오케스트레이터가 인프로세스 호출로 자동 폴백).
 > 띄우면 FAQ 인터셉트·도구 실행이 **업체별 독립 MCP 서버**(streamable-http)로 처리된다.
@@ -96,7 +99,8 @@ app/
   llm/           Claude 클라이언트 + 모델 티어(Haiku/Sonnet/Opus)
   memory/        Redis 단기 대화
   autocomplete/  prefix+시맨틱 추천
-  mcp/           faq_client · domain_client(외부 서버 MCP 호출) · tool_catalog(Tool RAG 카탈로그)
+  mcp/           faq_client · domain_client (외부 서버 MCP 호출, 원격 전용)
+                 # 도구 목록은 외부 서버 list_tools 로 디스커버리(scripts/index_tools.py) — 하드코딩 카탈로그 없음
 
 # MCP 서버는 외부 독립 프로젝트(상위 git/ 폴더):
 #   faq-{pizza,chinese,chicken}      FastAPI+FastMCP, match_faq (포트 9001~3)
@@ -115,10 +119,11 @@ scripts/         init_db·seed_demo·schema.sql
   (`faq-{pizza,chinese,chicken}`, `general-{pizza,chinese,chicken}`)로 분리됨. 각각 **자체
   pyproject + venv + 코드**(embedder/검색 로직 자체 보유, 다른 프로젝트 import 0) — 외부 벤더가
   독립 개발한 것처럼. 모두 **FastAPI + FastMCP**(streamable-http, `/mcp` + `/health`).
-  - 오케스트레이터는 `app/mcp/faq_client.py`·`domain_client.py` 로 **표준 MCP 프로토콜** 호출.
-  - FAQ 는 서버 미가동 시 오케스트레이터 자체 retrieval 로 폴백, 일반 도구는 원격 전용(미가동 시 답변 실패 처리).
+  - 오케스트레이터는 `app/mcp/faq_client.py`·`domain_client.py` 로 **표준 MCP 프로토콜**(원격 전용) 호출.
+    매칭/도구 로직·임계값은 **서버가 소유** — 오케스트레이터에 중복 없음(서버 미가동 시 FAQ 는 통과→rag, 도구는 답변 실패).
   - 데이터(Qdrant)는 공유(컬렉션/필터 격리). 코드/의존성만 분리.
-- **Tool RAG company_id 필터**: `tools` 컬렉션을 업체별로 태깅 적재(`index_tools(catalog, company_id)`).
-  `tool_retriever.retrieve_tools(query, company_id=...)` 가 그 업체 도구로만 후보를 검색 → LLM 에 다른 업체 도구를 노출하지 않음.
+- **Tool RAG = 서버 디스커버리**: `scripts/index_tools.py` 가 각 general 서버의 MCP `list_tools` 로 도구를
+  발견해 `tools` 컬렉션에 업체별 태깅 적재(하드코딩 카탈로그 없음 — 도구 정의의 단일 출처 = 서버).
+  `tool_retriever.retrieve_tools(query, company_id=...)` 가 그 업체 도구로만 후보 검색.
 - **관리자 인증**: 단일 공유 토큰(`ADMIN_TOKEN`). 운영은 `admins` 테이블 기반 per-company.
 - **인덱싱 잡**: `/v1/admin/index` 는 작업 기록만(워커 미구현).

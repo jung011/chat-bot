@@ -15,10 +15,11 @@ from app.core.config import settings
 
 @dataclass(frozen=True)
 class FaqConfig:
+    # collection 은 seed 데이터 적재용(orchestrator가 데이터 로더). 매칭 임계값(threshold)은
+    # faq 서버가 소유하므로 여기 두지 않는다(중복 제거).
     collection: str
-    threshold: float
     vector_db: str
-    server_url: str = ""   # 업체별 FAQ MCP 서버 URL(A안). 비면 인프로세스 폴백.
+    server_url: str = ""   # 업체별 FAQ MCP 서버 URL(A안)
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,6 @@ def _build_registry() -> TenantRegistry:
         raw = yaml.safe_load(f)
 
     defaults = raw.get("defaults", {})
-    d_faq = defaults.get("faq", {})
     d_ret = defaults.get("retrieval", {})
 
     tenants: dict[str, Tenant] = {}
@@ -93,7 +93,6 @@ def _build_registry() -> TenantRegistry:
             business_info=c.get("business_info", {}) or {},
             faq=FaqConfig(
                 collection=faq.get("collection", f"faq_{cid}"),
-                threshold=float(faq.get("threshold", d_faq.get("threshold", 0.85))),
                 vector_db=faq.get("vector_db", "localhost:6333"),
                 server_url=faq.get("server_url", ""),
             ),
