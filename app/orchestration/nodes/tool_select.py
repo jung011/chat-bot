@@ -22,9 +22,6 @@ from app.mcp import domain_client, faq_client
 from app.retrieval import hybrid, reranker, tool_retriever
 
 DOCUMENTS_COLLECTION = "documents"
-FAQ_SCORE_FLOOR = 0.3   # 이 미만의 무관 FAQ 는 컨텍스트에서 제외(노이즈 방지)
-# 실제 임베딩(fastembed) 기준: 관련 FAQ 0.48~0.92, 무관 ~0.16 → 0.3 으로 분리.
-# (hash 임베더는 무관이 ~0 이라 더 낮아도 무방하나, 둘 다 0.3 에서 안전)
 
 
 def _format_context(hits) -> str:
@@ -56,9 +53,10 @@ async def retrieve_documents(state: RAGState) -> dict:
     # 2) FAQ 검색 (업체 FAQ 서버 search_faq, 점수 floor 로 무관 항목 제외)
     faq_items = [
         f for f in await faq_client.search_faq(
-            server_url=state.get("faq_server_url", ""), question=question, top_k=5
+            server_url=state.get("faq_server_url", ""), question=question,
+            top_k=settings.faq_search_top_k,
         )
-        if f.get("score", 0) >= FAQ_SCORE_FLOOR and f.get("answer")
+        if f.get("score", 0) >= settings.faq_score_floor and f.get("answer")
     ]
 
     parts, sources = [], []
@@ -118,9 +116,10 @@ async def agent(state: RAGState) -> dict:
     # 도구 호출과 함께 답할 수 있게 한다. agent 경로도 FAQ 를 공통으로 본다.
     faq_items = [
         f for f in await faq_client.search_faq(
-            server_url=state.get("faq_server_url", ""), question=question, top_k=5
+            server_url=state.get("faq_server_url", ""), question=question,
+            top_k=settings.faq_search_top_k,
         )
-        if f.get("score", 0) >= FAQ_SCORE_FLOOR and f.get("answer")
+        if f.get("score", 0) >= settings.faq_score_floor and f.get("answer")
     ]
     faq_block = ""
     if faq_items:

@@ -16,9 +16,9 @@ import logging
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-logger = logging.getLogger("app.mcp.domain")
+from app.core.config import settings
 
-_CALL_TIMEOUT = 10.0
+logger = logging.getLogger("app.mcp.domain")
 
 
 def _parse_result(call_result) -> dict:
@@ -54,7 +54,7 @@ async def call(server_url: str, name: str, company_id: str, **kwargs) -> dict:
                 return _parse_result(result)
 
     try:
-        return await asyncio.wait_for(_call(), timeout=_CALL_TIMEOUT)
+        return await asyncio.wait_for(_call(), timeout=settings.mcp_call_timeout_seconds)
     except Exception as e:
         logger.warning("일반 서버(%s) 도구 호출 실패: %s", server_url, e)
         return {"success": False, "message": "도구 서버에 연결할 수 없습니다."}

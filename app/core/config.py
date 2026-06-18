@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     doc_top_n: int = 5
     tool_top_k: int = 5
 
+    # FAQ 검색 소스(정공법) 튜닝
+    faq_search_top_k: int = 5      # search_faq 후보 수(rag/agent 컨텍스트 병합용)
+    # 무관 FAQ 제외 floor — ⚠️ embedding_backend 와 짝(분포가 모델마다 다름).
+    # fastembed: 관련 0.48~0.92 / 무관 ~0.16 → 0.3. hash 는 무관이 ~0 이라 더 낮아도 무방.
+    faq_score_floor: float = 0.3
+
+    # MCP 외부 서버 호출 타임아웃(초) — 운영망 지연에 맞게 조정
+    mcp_call_timeout_seconds: float = 10.0   # 일반(도메인) 서버 도구 호출
+    faq_call_timeout_seconds: float = 5.0    # FAQ 서버 match/search
+
     # 오케스트레이션 루프 상한 (§06 §9)
     max_tool_iters: int = 3
 

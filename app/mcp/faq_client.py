@@ -17,9 +17,9 @@ import logging
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-logger = logging.getLogger("app.mcp.faq")
+from app.core.config import settings
 
-_CONNECT_TIMEOUT = 5.0
+logger = logging.getLogger("app.mcp.faq")
 
 
 def _parse_result(call_result) -> dict:
@@ -54,7 +54,7 @@ async def match_faq(*, server_url: str, question: str) -> dict:
                 return _parse_result(result)
 
     try:
-        return await asyncio.wait_for(_call(), timeout=_CONNECT_TIMEOUT)
+        return await asyncio.wait_for(_call(), timeout=settings.faq_call_timeout_seconds)
     except Exception as e:
         logger.warning("FAQ 외부 서버(%s) 연결 실패 → 통과(rag 로): %s", server_url, e)
         return {"matched": False}
@@ -74,7 +74,7 @@ async def search_faq(*, server_url: str, question: str, top_k: int = 5) -> list[
                 return data.get("results", []) if isinstance(data, dict) else []
 
     try:
-        return await asyncio.wait_for(_call(), timeout=_CONNECT_TIMEOUT)
+        return await asyncio.wait_for(_call(), timeout=settings.faq_call_timeout_seconds)
     except Exception as e:
         logger.warning("FAQ search 외부 서버(%s) 실패: %s", server_url, e)
         return []
