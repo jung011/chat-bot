@@ -114,16 +114,35 @@ async def agent(state: RAGState) -> dict:
     if not llm.available:
         return await retrieve_documents(state)
 
+    # FAQ 컨텍스트 주입(rag 와 동일 패턴) — 복합 질문에서 FAQ-전용 정보(주차·포장 등)도
+    # 도구 호출과 함께 답할 수 있게 한다. agent 경로도 FAQ 를 공통으로 본다.
+    faq_items = [
+        f for f in await faq_client.search_faq(
+            server_url=state.get("faq_server_url", ""), question=question, top_k=5
+        )
+        if f.get("score", 0) >= FAQ_SCORE_FLOOR and f.get("answer")
+    ]
+    faq_block = ""
+    if faq_items:
+        faq_block = (
+            "[참고 FAQ]\n"
+            + "\n".join(f"Q: {f['question']} / A: {f['answer']}" for f in faq_items)
+            + "\n\n"
+        )
+
     system = prompts.AGENT_SYSTEM.format(
         persona=state["persona"], company_id=company_id, business_info=state["business_info"]
     )
     history = short_term.history_text(state.get("history", []))
-    user = (f"[대화 히스토리]\n{history}\n[질문]\n{question}" if history else question)
+    body = (f"[대화 히스토리]\n{history}\n[질문]\n{question}" if history else f"[질문]\n{question}")
+    user = faq_block + body
     messages: list[dict] = [{"role": "user", "content": user}]
     tools = _anthropic_tools(candidates)
 
     usage = dict(state.get("usage", {"input_tokens": 0, "output_tokens": 0}))
-    sources: list[dict] = []
+    sources: list[dict] = [
+        {"type": "faq", "title": f["question"], "score": round(f["score"], 3)} for f in faq_items
+    ]
     trace: list[dict] = []
 
     max_iters = settings.max_tool_iters
