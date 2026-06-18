@@ -57,3 +57,18 @@ companies:
       collection: faq_chicken
       vector_db: "localhost:6333"
       server_url: "http://127.0.0.1:9003/mcp"
+
+  bunsik:
+    name: "김밥천국"
+    status: active
+    general_server_url: "http://127.0.0.1:9104/mcp"
+    persona: "분식집 직원입니다. 김밥·라면·떡볶이 안내에 능숙하고, 친근한 말투로 안내합니다."
+    business_info:
+      phone: "02-444-4444"
+      address: "서울시 종로구 분식로 5"
+      hours: "매일 09:00~21:00"
+      delivery: "종로구·중구 일대 배달. 최소주문 10,000원, 배달비 2,500원"
+    faq:
+      collection: faq_bunsik
+      vector_db: "localhost:6333"
+      server_url: "http://127.0.0.1:9004/mcp"
