@@ -271,3 +271,52 @@ Tool RAG 검색 정확도 = description 품질. 규칙:
 - [x] 도구 인덱싱 자동화 → `scripts/index_tools.py` 가 `list_tools` 디스커버리로 적재
 - [x] 도구 테스트(LLM 없이) → 테스트는 `anthropic` 고정(키 없음→degrade)로 결정적. 도구 자체 테스트는 외부 벤더 프로젝트 소유
 - [ ] FAQ/일반 서버 배포 방식(상시 vs 스케일-투-제로) — 미정
+
+---
+
+## 9. 벤더 연동 계약 (Integration Contract) — 신규 서버 개발 시 필독
+
+> 신규 업체가 **오케스트레이터와 실제로 맞물리는** 서버를 만들려면 아래를 **반드시** 지킨다.
+> (언어·내부 구현·질의 도구 구성은 자유지만, 이 계약은 고정이다. 온보딩 절차는 [09](./09_멀티테넌시_업체온보딩_가이드.md).)
+
+### 9.1 전송 & 엔드포인트
+- **MCP over streamable-http**, 경로 **`/mcp`** (FastAPI 에 FastMCP 마운트 또는 FastMCP standalone).
+- **`/health`** (REST GET) 권장 — 런처/헬스체크용: `{"data":{"status":"ok", ...}}`.
+- 오케스트레이터는 `configs/tenants.yaml` 의 `faq.server_url` / `general_server_url` 로 연결한다.
+
+### 9.2 필수 고정 도구 (이름·시그니처·반환을 정확히 일치)
+오케스트레이터가 **도구 이름을 하드코딩**해 부르므로 아래는 정확히 맞춰야 한다.
+
+**FAQ 서버**
+| 도구 | 시그니처 | 반환 |
+|---|---|---|
+| `match_faq` | `(question: str)` | `{matched: bool, answer?, question?, score: float}` |
+| `upsert_faq` | `(company_id: str, items: [{question, answer, category?}])` | `ok(accepted: int)` |
+
+**일반 서버**
+| 도구 | 시그니처 | 반환 |
+|---|---|---|
+| `ingest_documents` | `(company_id: str, docs: [{doc_id, title, category, text, source_uri}])` | `ok(chunks: int)` |
+| **질의 도구**(search_menu 등) | **자유** — 단 `company_id` 인자 + ok/fail | ok/fail |
+
+> 질의 도구는 **이름·개수 자유**: `list_tools` 디스커버리로 발견되고 description(§7) 품질로 매칭된다. 단 모든 도구는 **`company_id` 인자 필수**.
+
+### 9.3 임베딩 규약 (일반 서버 — 필수)
+- 일반 서버는 **공유 `documents` 컬렉션**을 쓰므로 **오케스트레이터와 동일 임베딩**이어야 검색이 맞물린다(불일치 시 문서검색 전부 깨짐).
+- 파일럿 기준: **`HashEmbedder`, dim 384** — 토큰화 `[0-9A-Za-z가-힣]+`(소문자), sha1 2-버킷 가산, L2 정규화, 코사인 거리.
+- 운영(실제 임베딩 모델) 시: **모델·버전·차원을 오케스트레이터와 통일** 하거나, **벤더별 `documents` 컬렉션 분리**(완전 독립) 중 택1.
+- **FAQ 서버는 예외**: `faq_<id>` 를 자기만 읽고/쓰므로(오케스트레이터 미접근) 임베더 자유 — ingest 와 match 가 서버 내부에서 일치하면 됨.
+
+### 9.4 데이터 스키마 (공유 컬렉션)
+- `documents` payload: `{company_id, doc_id, chunk_index, text, title, category, source_uri}`. 오케스트레이터 rag 가 `text/title/category` 를 읽고 `company_id` 로 필터(§04 §3.2).
+- 포인트 ID 는 **결정적**(재적재 멱등). 문자열 ID 는 **UUID5(고정 네임스페이스 `00000000-0000-0000-0000-000000000abc`)** 로 변환 — 오케스트레이터와 동일 규칙.
+- 모든 적재에 **`company_id` 태깅**(격리).
+
+### 9.5 결과·에러 형식
+- 도구는 ok/fail dict 반환(§5.1). FastMCP 가 `structuredContent`(+`content[].text` JSON)로 래핑 → 오케스트레이터가 둘 다 파싱.
+- 적재/관리 도구(`upsert_faq`·`ingest_documents`)는 오케스트레이터 `index_tools` 에서 **Tool RAG 후보 제외**(denylist) — 벤더는 신경 쓸 필요 없음.
+
+### 9.6 온보딩 후 자가 검증
+- `match_faq("등록한 FAQ 질문")` → 즉답(matched=true) 반환?
+- `ingest_documents(docs)` 적재 후, 오케스트레이터 rag 질의가 그 문서로 답하나?
+- 타 `company_id` 데이터가 섞여 나오지 않나?(격리)
