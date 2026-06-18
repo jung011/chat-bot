@@ -5,6 +5,13 @@
 > **관련 문서:** [01_아키텍처_설계서.md](./01_아키텍처_설계서.md) · [02_백엔드_패키지구조.md](./02_백엔드_패키지구조.md) (mcp_servers/, app/mcp/) · [09_멀티테넌시_업체온보딩_가이드.md](./09_멀티테넌시_업체온보딩_가이드.md)
 > **상태:** 초안 (v1)
 
+> ⚠️ **구현 현황(as-built):** [12_구현_아키텍처.md](./12_구현_아키텍처.md) 참고. 주요 차이:
+> - **MCP 서버 = 외부 독립 프로젝트**(상위 `git/`): `faq-{pizza,chinese,chicken}`(9001~3), `general-{pizza,chinese,chicken}`(9101~3). 각자 **FastAPI + FastMCP 마운트**(streamable-http, `/mcp`+`/health`), 자체 pyproject/venv/코드.
+> - 일반 서버는 documents·store·order 도구 **7개를 한 서버로** 묶음(서버별 분리 아님).
+> - **적재 도구 추가**: faq 서버 `upsert_faq`, 일반 서버 `ingest_documents`(데이터 소유=벤더). 이 둘은 Tool RAG 후보에서 제외.
+> - 오케스트레이터는 `app/mcp/{faq_client,domain_client}` 로 **원격 전용** 호출(인프로세스 폴백/레지스트리 없음).
+> - 도구 카탈로그는 정적 파일 없이 **`list_tools` 디스커버리**(`scripts/index_tools.py`).
+
 ---
 
 ## 1. 원칙

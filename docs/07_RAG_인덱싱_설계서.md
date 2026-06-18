@@ -5,6 +5,13 @@
 > **관련 문서:** [01_아키텍처_설계서.md](./01_아키텍처_설계서.md) · [04_DB설계서.md](./04_DB설계서.md) · [02_백엔드_패키지구조.md](./02_백엔드_패키지구조.md) (indexing/, app/retrieval/)
 > **상태:** 초안 (v1)
 
+> ⚠️ **구현 현황(as-built):** [12_구현_아키텍처.md](./12_구현_아키텍처.md) 참고. 주요 차이:
+> - **임베딩 = 결정적 `HashEmbedder`**(어휘 기반, 키 불필요, dim 384). 운영은 실제 모델로 교체.
+> - **적재(ingestion)는 벤더 서버가 소유**: 문서 → 일반 서버 `ingest_documents`(청킹+임베딩+적재), FAQ → faq 서버 `upsert_faq`. 오케스트레이터는 위임만.
+> - 오케스트레이터 `indexing/` 은 **자동완성 질문 생성(`generate_autocomplete`)만** 담당(질문생성=LLM, 벤더 서버엔 LLM 없음).
+> - **Tool RAG 색인 = 서버 디스커버리**(`scripts/index_tools.py`, `list_tools`). `documents`/`tools`/`autocomplete_q` 에 `company_id` payload 인덱스.
+> - 멱등 적재: 모든 포인트 ID 결정적(내용 해시/문자열→UUID5).
+
 ---
 
 ## 1. 두 프로세스 (재확인)

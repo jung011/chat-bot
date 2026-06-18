@@ -5,6 +5,13 @@
 > **관련 문서:** [01_아키텍처_설계서.md](./01_아키텍처_설계서.md) · [02_백엔드_패키지구조.md](./02_백엔드_패키지구조.md) (app/orchestration, app/llm)
 > **상태:** 초안 (v1)
 
+> ⚠️ **구현 현황(as-built):** [12_구현_아키텍처.md](./12_구현_아키텍처.md) 참고. 주요 차이:
+> - **LLM 백엔드 2종**: `LLM_PROVIDER=anthropic`(API) | `claude_cli`(로컬 Claude Code CLI, 키 불필요).
+> - **라우팅 기본 = 규칙 기반**(`ROUTE_MODE=rule`) — LLM 호출 0. RAG 의 LLM 호출을 1회(generate)로 줄임(속도).
+> - **agent 단계는 Sonnet 사용**(설계의 Opus 아님 — Opus 상수는 정의돼 있으나 미매핑).
+> - **verify 노드 기본 OFF**(`VERIFY_ENABLED=false`) — 경량 판사 오기각 방지. 생성 프롬프트가 컨텍스트 외 답변 금지를 강제.
+> - 답변 실패 유형(A/C)은 mode="fail" 로만 표기(별도 분기 미구현).
+
 ---
 
 ## 1. 모델 티어 전략
