@@ -84,6 +84,12 @@ FAQ = {
     "pizza": [
         {"question": "영업시간이 어떻게 되나요?", "answer": "매일 11시부터 22시까지 영업합니다. (브레이크타임 15~17시)", "category": "운영"},
         {"question": "주차 가능한가요?", "answer": "건물 지하 주차장을 2시간 무료로 이용하실 수 있어요.", "category": "운영"},
+        {"question": "포장 되나요?", "answer": "네, 모든 메뉴 포장 가능합니다.", "category": "운영"},
+        {"question": "예약할 수 있나요?", "answer": "매장 예약은 전화(02-111-1111)로 가능합니다.", "category": "운영"},
+        {"question": "단체 모임 되나요?", "answer": "최대 20명까지 단체석 이용 가능합니다.", "category": "운영"},
+        {"question": "와이파이 되나요?", "answer": "매장 내 무료 와이파이를 제공합니다.", "category": "편의"},
+        {"question": "아기 의자 있나요?", "answer": "유아용 의자를 비치하고 있습니다.", "category": "편의"},
+        {"question": "콜키지 되나요?", "answer": "와인 콜키지는 병당 1만원입니다.", "category": "편의"},
     ],
     "chinese": [
         {"question": "영업시간이 어떻게 되나요?", "answer": "매일 10시 30분부터 21시 30분까지 영업합니다.", "category": "운영"},
@@ -96,11 +102,17 @@ FAQ = {
 }
 
 
-async def _reset() -> None:
-    """멱등 시드 — 관련 벡터 컬렉션·자동완성 풀·FAQ 이력을 초기화(재실행 시 중복 방지)."""
+async def _reset(companies: list[str]) -> None:
+    """멱등 시드 — 관련 벡터 컬렉션·자동완성 풀·FAQ 이력을 초기화(재실행 시 중복 방지).
+
+    companies 가 전체일 때만 공유 컬렉션(documents/autocomplete_q)을 통째로 비운다.
+    일부만 재시드할 땐 faq_<id> 와 해당 업체 풀/이력만 정리(다른 업체 데이터 보존).
+    """
     client = vector_store.get_client()
-    collections = ["documents", "autocomplete_q"]  # tools 는 scripts/index_tools.py 가 관리
-    for cid in DOCS:
+    collections = []
+    if set(companies) == set(DOCS):
+        collections += ["documents", "autocomplete_q"]  # tools 는 index_tools.py 가 관리
+    for cid in companies:
         collections.append(tenant_router.resolve(cid).faq.collection)  # faq_<id>
     for coll in collections:
         if await client.collection_exists(coll):
@@ -108,7 +120,7 @@ async def _reset() -> None:
     # Redis 자동완성 풀 + Postgres FAQ 이력 초기화
     r = redis_client.get_client()
     async with (await postgres.init_pool()).connection() as conn:
-        for cid in DOCS:
+        for cid in companies:
             await r.delete(f"ac:{cid}")
             await conn.execute("DELETE FROM faq_sources WHERE company_id=%s", (cid,))
 
@@ -116,8 +128,11 @@ async def _reset() -> None:
 async def main() -> None:
     # ⚠️ 적재는 벤더 서버에 위임하므로 외부 서버(faq-*, general-*)가 떠 있어야 한다.
     #    먼저 'python scripts/run_external_servers.py' 실행.
-    await _reset()
-    for company_id, docs in DOCS.items():
+    #    인자로 업체를 주면 해당 업체만 재시드(예: python scripts/seed_demo.py pizza).
+    companies = [c for c in sys.argv[1:] if c in DOCS] or list(DOCS)
+    await _reset(companies)
+    for company_id in companies:
+        docs = DOCS[company_id]
         tenant = tenant_router.resolve(company_id)
         # 문서 적재 위임 → general 벤더 서버(ingest_documents)
         doc_res = await domain_client.call(

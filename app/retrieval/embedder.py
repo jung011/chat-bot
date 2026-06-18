@@ -58,12 +58,35 @@ class HashEmbedder:
         return [self.embed(t) for t in texts]
 
 
+class FastEmbedEmbedder:
+    """로컬 ONNX 실제 임베딩 모델(fastembed). 의미 유사도 기반 — 조사/어형 변화에 강함.
+
+    API 키 불필요. 최초 1회 모델 다운로드 후 로컬 추론. COSINE 거리는 Qdrant 가
+    정규화하므로 별도 L2 정규화 없이 모델 출력을 그대로 사용한다.
+    """
+
+    def __init__(self, model_name: str | None = None, dim: int | None = None):
+        from fastembed import TextEmbedding
+
+        self.dim = dim or settings.embedding_dim
+        self._model = TextEmbedding(model_name=model_name or settings.embedding_model)
+
+    def embed(self, text: str) -> list[float]:
+        return list(self._model.embed([text]))[0].tolist()
+
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        return [v.tolist() for v in self._model.embed(list(texts))]
+
+
 _embedder: Embedder | None = None
 
 
 def get_embedder() -> Embedder:
-    """전역 임베더. 운영 전환 시 여기서 실제 모델 구현으로 교체한다."""
+    """전역 임베더. settings.embedding_backend 로 구현 선택(hash | fastembed)."""
     global _embedder
     if _embedder is None:
-        _embedder = HashEmbedder()
+        if settings.embedding_backend == "fastembed":
+            _embedder = FastEmbedEmbedder()
+        else:
+            _embedder = HashEmbedder()
     return _embedder

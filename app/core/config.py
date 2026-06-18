@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     # 검색/임베딩 (§07 §4.1) — 기본값, tenants.yaml defaults 로 덮어씀
     # (FAQ 임계값은 faq 서버가 소유 — 오케스트레이터에 두지 않음)
+    # embedding_backend: "hash"(결정적 의사임베딩, 기본) | "fastembed"(로컬 ONNX 실제 모델)
+    #   ⚠️ documents 컬렉션은 general-* 벤더 서버와 공유하므로 동일 backend/model/dim 이어야 함.
+    embedding_backend: str = "hash"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dim: int = 384
     doc_top_k: int = 20
     doc_top_n: int = 5

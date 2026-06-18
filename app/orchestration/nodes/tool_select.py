@@ -22,7 +22,9 @@ from app.mcp import domain_client, faq_client
 from app.retrieval import hybrid, reranker, tool_retriever
 
 DOCUMENTS_COLLECTION = "documents"
-FAQ_SCORE_FLOOR = 0.15   # 이 미만의 무관 FAQ 는 컨텍스트에서 제외(노이즈 방지)
+FAQ_SCORE_FLOOR = 0.3   # 이 미만의 무관 FAQ 는 컨텍스트에서 제외(노이즈 방지)
+# 실제 임베딩(fastembed) 기준: 관련 FAQ 0.48~0.92, 무관 ~0.16 → 0.3 으로 분리.
+# (hash 임베더는 무관이 ~0 이라 더 낮아도 무방하나, 둘 다 0.3 에서 안전)
 
 
 def _format_context(hits) -> str:
