@@ -24,9 +24,12 @@ from app.retrieval import vector_store  # noqa: E402
 from app.tenancy.registry import get_registry  # noqa: E402
 from indexing import pipeline  # noqa: E402
 
+# Tool RAG 후보에서 제외할 적재/관리 도구(고객 질의용 아님)
+_EXCLUDE = {"ingest_documents", "upsert_faq"}
+
 
 async def discover(server_url: str) -> list[dict]:
-    """외부 일반 서버의 list_tools → 카탈로그 항목."""
+    """외부 일반 서버의 list_tools → 카탈로그 항목(적재/관리 도구 제외)."""
     async with streamablehttp_client(server_url) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -39,6 +42,7 @@ async def discover(server_url: str) -> list[dict]:
                     "params_schema": t.inputSchema or {},
                 }
                 for t in res.tools
+                if t.name not in _EXCLUDE
             ]
 
 

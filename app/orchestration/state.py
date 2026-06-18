@@ -32,12 +32,10 @@ class RAGState(TypedDict, total=False):
     sources: list[dict]           # 근거(FAQ/문서/도구)
     retrieved_context: str        # 생성에 투입할 컨텍스트
     tool_trace: list[dict]        # 실행된 도구 기록(디버깅)
-    iters: int
 
     # 출력
     mode: Mode
     answer: str                   # mode in {answer_ready, fail} 이면 채워짐
-    fail_reason: str              # 실패 유형(A/B/C/D, §06 §10.1)
     usage: dict[str, int]         # {input_tokens, output_tokens}
 
 
@@ -69,7 +67,6 @@ def initial_state(
         sources=[],
         retrieved_context="",
         tool_trace=[],
-        iters=0,
         usage={"input_tokens": 0, "output_tokens": 0},
     )
 

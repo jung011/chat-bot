@@ -119,7 +119,6 @@ async def search(
     *,
     company_id: str | None = None,
     top_k: int = 10,
-    score_threshold: float | None = None,
 ) -> list[Hit]:
     """질의 임베딩 → 벡터 검색. company_id 가 주어지면 페이로드 필터 강제."""
     client = get_client()
@@ -131,7 +130,6 @@ async def search(
         query=vector,
         limit=top_k,
         query_filter=_company_filter(company_id),
-        score_threshold=score_threshold,
         with_payload=True,
     )
     return [Hit(id=p.id, score=p.score, payload=p.payload or {}) for p in res.points]

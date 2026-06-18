@@ -31,20 +31,20 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate   /  macOS·Linux: source .venv/bin/activate
 pip install -e ".[dev]"
 
-# DB 스키마 초기화 + 데모 데이터 시드 (1회)
+# 1) DB 스키마 초기화
 python scripts/init_db.py     # §04 테이블 생성
-python scripts/seed_demo.py   # 피자/중국/치킨 메뉴·정책·FAQ·도구 적재
 
-# (선택) 외부 MCP 서버 6개 기동 — 독립 프로젝트(상위 git/ 폴더의 형제), 별도 터미널 (A안)
+# 2) 외부 MCP 서버 6개 기동 — 독립 프로젝트(상위 git/ 폴더의 형제), 별도 터미널 (A안)
 python scripts/run_external_servers.py
 #   FAQ:  faq-pizza 9001 / faq-chinese 9002 / faq-chicken 9003
 #   일반: general-pizza 9101 / general-chinese 9102 / general-chicken 9103
 #   (각 프로젝트는 자체 venv 필요 — 각 폴더에서 python -m venv .venv && pip install -e .)
 
-# 외부 서버 기동 후, 도구를 디스커버리해 Tool RAG 색인 (general 서버 list_tools)
-python scripts/index_tools.py
+# 3) 데모 데이터 시드 — 적재는 벤더 서버에 위임하므로 ②가 먼저 떠 있어야 함
+python scripts/seed_demo.py   # 문서→general 서버, FAQ→faq 서버 적재 / 자동완성은 오케스트레이터
+python scripts/index_tools.py # general 서버 list_tools 로 Tool RAG 색인
 
-# 메인 앱 실행 (권장 — 모든 OS에서 안전)
+# 4) 메인 앱 실행 (권장 — 모든 OS에서 안전)
 python run.py
 ```
 
@@ -121,7 +121,9 @@ scripts/         init_db·seed_demo·schema.sql
   독립 개발한 것처럼. 모두 **FastAPI + FastMCP**(streamable-http, `/mcp` + `/health`).
   - 오케스트레이터는 `app/mcp/faq_client.py`·`domain_client.py` 로 **표준 MCP 프로토콜**(원격 전용) 호출.
     매칭/도구 로직·임계값은 **서버가 소유** — 오케스트레이터에 중복 없음(서버 미가동 시 FAQ 는 통과→rag, 도구는 답변 실패).
-  - 데이터(Qdrant)는 공유(컬렉션/필터 격리). 코드/의존성만 분리.
+  - **데이터 적재도 벤더 소유**: 문서는 general 서버 `ingest_documents`, FAQ 는 faq 서버 `upsert_faq` 가 적재(임베딩 포함).
+    오케스트레이터(seed·admin/faq)는 적재를 서버에 위임만 한다. 자동완성(autocomplete_q)만 오케스트레이터 UX 기능으로 직접 생성.
+  - 데이터 저장소(Qdrant)는 공유(컬렉션/필터 격리). 코드/의존성/적재 책임 분리. **임베딩 규약(HashEmbedder·dim 384)은 양쪽 동일해야 맞물림**(공유 컬렉션 결합).
 - **Tool RAG = 서버 디스커버리**: `scripts/index_tools.py` 가 각 general 서버의 MCP `list_tools` 로 도구를
   발견해 `tools` 컬렉션에 업체별 태깅 적재(하드코딩 카탈로그 없음 — 도구 정의의 단일 출처 = 서버).
   `tool_retriever.retrieve_tools(query, company_id=...)` 가 그 업체 도구로만 후보 검색.

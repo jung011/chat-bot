@@ -5,7 +5,7 @@
 - agent: agent 경로. Tool RAG 로 후보 도구를 추려 LLM 도구호출 루프 실행(max_iters).
 - prep_chitchat: chitchat 경로. 검색 없이 생성 단계로.
 
-답변 실패(§06 §10)는 mode="fail" + fail_reason 으로 표기한다(A: 도구없음, C: 근거없음).
+답변 실패(§06 §10)는 mode="fail" 로 표기한다(A: 도구없음, C: 근거없음 — chat_service 가 폴백 처리).
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ async def retrieve_documents(state: RAGState) -> dict:
         question, hits, top_n=state.get("doc_top_n", settings.doc_top_n), text_field="text"
     )
     if not ranked:
-        return {"mode": "fail", "fail_reason": "C"}
+        return {"mode": "fail"}  # C: 근거 없음
     sources = [
         {"type": "document", "title": h.payload.get("title", "문서"), "score": round(h.score, 3)}
         for h in ranked
@@ -83,7 +83,7 @@ async def agent(state: RAGState) -> dict:
         question, company_id=company_id, top_k=state.get("tool_top_k", settings.tool_top_k)
     )
     if not candidates:
-        return {"mode": "fail", "fail_reason": "A"}  # 적합한 도구 없음
+        return {"mode": "fail"}  # A: 적합한 도구 없음
 
     # LLM 미설정 → 도구호출 불가. 문서 검색으로 degrade.
     if not llm.available:
@@ -146,7 +146,7 @@ async def agent(state: RAGState) -> dict:
         raise  # 타임아웃/업스트림 오류는 서비스에서 처리
 
     if not answer:
-        return {"mode": "fail", "fail_reason": "A", "usage": usage, "tool_trace": trace}
+        return {"mode": "fail", "usage": usage, "tool_trace": trace}  # A: 도구 호출했으나 답 없음
     return {
         "mode": "answer_ready",
         "answer": answer,

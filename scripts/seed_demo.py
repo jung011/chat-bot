@@ -17,6 +17,7 @@ if sys.platform == "win32":
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db import postgres, redis_client  # noqa: E402
+from app.mcp import domain_client  # noqa: E402
 from app.retrieval import vector_store  # noqa: E402
 from app.services import admin_service  # noqa: E402
 from app.tenancy import router as tenant_router  # noqa: E402
@@ -113,20 +114,27 @@ async def _reset() -> None:
 
 
 async def main() -> None:
+    # ⚠️ 적재는 벤더 서버에 위임하므로 외부 서버(faq-*, general-*)가 떠 있어야 한다.
+    #    먼저 'python scripts/run_external_servers.py' 실행.
     await _reset()
     for company_id, docs in DOCS.items():
         tenant = tenant_router.resolve(company_id)
-        stats = await pipeline.index_documents(company_id, docs)
+        # 문서 적재 위임 → general 벤더 서버(ingest_documents)
+        doc_res = await domain_client.call(
+            tenant.general_server_url, "ingest_documents", company_id, docs=docs
+        )
+        # FAQ 적재 위임 → faq 벤더 서버(admin_service 가 upsert_faq 호출)
         faq_res = await admin_service.upload_faq(tenant, FAQ[company_id])
-        # FAQ 질문도 자동완성 풀에 추가(source: faq)
+        # 자동완성은 오케스트레이터 UX 기능 — 문서에서 질문 생성(LLM)
+        ac = await pipeline.generate_autocomplete(company_id, docs)
         await pipeline.add_to_autocomplete_pool(
             company_id, [{"text": f["question"], "source": "faq"} for f in FAQ[company_id]]
         )
-        print(f"[{company_id}] docs chunks={stats['chunks']} acq={stats['questions']} faq={faq_res['accepted']}")
+        print(f"[{company_id}] doc_chunks={doc_res.get('chunks')} faq={faq_res['accepted']} acq={ac['questions']}")
 
     # 도구(tools 컬렉션)는 외부 general 서버에서 list_tools 로 디스커버리해 적재한다:
-    #   general 서버 기동 후 → python scripts/index_tools.py
-    print("[tools] 외부 서버 디스커버리로 적재 — 'python scripts/index_tools.py' 실행 필요")
+    #   → python scripts/index_tools.py
+    print("[tools] 외부 서버 디스커버리로 적재 — 'python scripts/index_tools.py' 실행")
 
     await postgres.close_pool()
     await redis_client.close_client()

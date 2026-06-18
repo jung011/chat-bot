@@ -1,7 +1,8 @@
-"""인덱싱 파이프라인 (§07 §3) — 오프라인.
+"""인덱싱 파이프라인 (§07 §3) — 오프라인 (오케스트레이터 측).
 
-원본 → 파싱 → 청킹 → 임베딩 → 벡터DB 적재(documents, company_id 태그)
-        └→ 질문 생성(LLM) → autocomplete_q + 자동완성 prefix 풀(Redis) 적재
+문서 본문 자체의 적재(documents 컬렉션)는 **general 벤더 서버가 소유**(ingest_documents 도구).
+오케스트레이터는 자기 UX 기능인 **자동완성(autocomplete_q + prefix 풀)** 만 문서에서 생성한다
+(질문 생성은 LLM 필요 — 벤더 서버에는 LLM 이 없으므로 오케스트레이터가 담당).
 """
 from __future__ import annotations
 
@@ -13,46 +14,23 @@ from app.retrieval.embedder import get_embedder
 from indexing import chunking, question_gen
 from indexing.parsers import parse_text
 
-DOCUMENTS_COLLECTION = "documents"
 AUTOCOMPLETE_COLLECTION = "autocomplete_q"
 
 
-async def index_documents(company_id: str, docs: list[dict]) -> dict:
-    """docs: [{doc_id, title, category, text, source_uri}]. 청크 적재 + 질문 생성."""
-    await vector_store.ensure_collection(DOCUMENTS_COLLECTION)
+async def generate_autocomplete(company_id: str, docs: list[dict]) -> dict:
+    """문서에서 자동완성 질문을 생성해 autocomplete_q + prefix 풀에 적재(오케스트레이터 소유)."""
     await vector_store.ensure_collection(AUTOCOMPLETE_COLLECTION)
-    await vector_store.ensure_company_index(DOCUMENTS_COLLECTION)
     await vector_store.ensure_company_index(AUTOCOMPLETE_COLLECTION)
     emb = get_embedder()
 
-    doc_points: list[dict] = []
     acq_points: list[dict] = []
     pool: list[dict] = []
-
     for doc in docs:
-        text = parse_text(doc["text"])
-        for idx, ch in enumerate(chunking.chunk(text)):
-            doc_points.append(
-                {
-                    "id": f"{company_id}_{doc['doc_id']}_{idx}",
-                    "vector": emb.embed(ch),
-                    "payload": {
-                        "company_id": company_id,
-                        "doc_id": doc["doc_id"],
-                        "chunk_index": idx,
-                        "text": ch,
-                        "title": doc.get("title", ""),
-                        "category": doc.get("category", ""),
-                        "source_uri": doc.get("source_uri", ""),
-                    },
-                }
-            )
-            # 자동완성 질문 생성
+        for ch in chunking.chunk(parse_text(doc["text"])):
             for q in question_gen.dedup(await question_gen.generate_questions(ch)):
                 qhash = hashlib.sha1(q.encode("utf-8")).hexdigest()[:16]
                 acq_points.append(
                     {
-                        # 결정적 ID(질문 해시) — 재인덱싱 시 중복 적재 방지(멱등)
                         "id": f"acq_{company_id}_{qhash}",
                         "vector": emb.embed(q),
                         "payload": {
@@ -65,10 +43,9 @@ async def index_documents(company_id: str, docs: list[dict]) -> dict:
                 )
                 pool.append({"text": q, "source": "document"})
 
-    await vector_store.upsert(DOCUMENTS_COLLECTION, doc_points)
     await vector_store.upsert(AUTOCOMPLETE_COLLECTION, acq_points)
     await _merge_pool(company_id, pool)
-    return {"chunks": len(doc_points), "questions": len(acq_points)}
+    return {"questions": len(acq_points)}
 
 
 async def index_tools(catalog: list[dict], company_id: str) -> int:
