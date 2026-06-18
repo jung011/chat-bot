@@ -47,12 +47,28 @@ async def discover(server_url: str) -> list[dict]:
 
 
 async def main() -> None:
+    # 인자로 업체를 주면 **증분**(그 업체 도구만 upsert, 컬렉션 drop 안 함) → 무중단.
+    #   예: python scripts/index_tools.py bunsik   (기존 업체 도구 검색 영향 0)
+    # 인자가 없으면 전체 재색인(컬렉션 drop & recreate — 오프라인/초기 구축용).
+    targets = [a for a in sys.argv[1:] if not a.startswith("-")]
+    full_rebuild = not targets
+
     client = vector_store.get_client()
-    if await client.collection_exists("tools"):
-        await client.delete_collection("tools")  # 재인덱싱 — 옛 포인트 정리
+    if full_rebuild:
+        if await client.collection_exists("tools"):
+            await client.delete_collection("tools")  # 전체 재색인 시에만 정리
+        tenants = get_registry().all()
+    else:
+        # 증분: 컬렉션은 보존(없으면 pipeline.index_tools 가 생성). 대상 업체만.
+        tenants = [t for t in get_registry().all() if t.company_id in targets]
+        if not tenants:
+            print(f"[error] 대상 업체 없음(tenants.yaml 미등록?): {targets}")
+            await vector_store.close_client()
+            return
+        print(f"[incremental] 대상 업체만 색인(기존 컬렉션 보존): {[t.company_id for t in tenants]}")
 
     total = 0
-    for tenant in get_registry().all():
+    for tenant in tenants:
         url = tenant.general_server_url
         if not url:
             print(f"[skip] {tenant.company_id}: general_server_url 없음")
@@ -67,7 +83,7 @@ async def main() -> None:
         total += n
         print(f"[{tenant.company_id}] 도구 {n}개 발견·적재: {[c['name'] for c in catalog]}")
 
-    print(f"tools 컬렉션 적재 완료: 총 {total} 포인트")
+    print(f"tools 적재 완료: {total} 포인트({'전체 재색인' if full_rebuild else '증분'})")
     await vector_store.close_client()
 
 
