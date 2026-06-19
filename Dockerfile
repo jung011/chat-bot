@@ -22,6 +22,13 @@ RUN pip install --no-cache-dir \
 ARG EMBEDDING=base
 RUN if [ "$EMBEDDING" = "fastembed" ]; then pip install --no-cache-dir "fastembed>=0.3"; fi
 
+# ── 1c) (선택) 임베딩 모델 가중치를 이미지에 굽기 → 런타임 콜드스타트(최초 다운로드) 제거 ──
+#     앱과 동일한 호출로 모델을 받아 이미지 캐시에 박는다. 모델 안 바뀌면 캐시 재사용.
+ARG EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+RUN if [ "$EMBEDDING" = "fastembed" ]; then \
+      python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='$EMBEDDING_MODEL'); print('model baked:', '$EMBEDDING_MODEL')"; \
+    fi
+
 # ── 2) 소스 레이어 (코드만 바뀌면 여기부터 재빌드 — 빠름) ──
 COPY app ./app
 COPY configs ./configs
