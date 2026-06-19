@@ -11,6 +11,8 @@
 > - **agent 단계는 Sonnet 사용**(설계의 Opus 아님 — Opus 상수는 정의돼 있으나 미매핑).
 > - **verify 노드 기본 OFF**(`VERIFY_ENABLED=false`) — 경량 판사 오기각 방지. 생성 프롬프트가 컨텍스트 외 답변 금지를 강제.
 > - 답변 실패 유형(A/C)은 mode="fail" 로만 표기(별도 분기 미구현).
+> - **FAQ 검색소스화(정공법)**: rag/agent 가 FAQ(`search_faq` top-K, floor 0.3)를 검색 컨텍스트로 **병합** — generate 의 `{retrieved_context}` 및 agent 사용자 메시지의 `[참고 FAQ]` 블록에 포함. **복합 질문이면 0단계 즉답을 건너뛰고** rag/agent 가 다건 처리(한쪽만 답하는 오즉답 방지).
+> - **임베딩 백엔드 선택식**(`EMBEDDING_BACKEND`: hash | fastembed) — FAQ/문서 의미 매칭 품질 좌우(§07, §08 §9.3).
 
 ---
 
