@@ -130,6 +130,7 @@ GET /v1/sessions?limit=20&cursor=<opaque>
 | POST | `/v1/messages/{message_id}/feedback` | 답변 피드백 | ❌ | body |
 | POST | `/v1/admin/faq` | FAQ 업로드(담당자) | ✅(admin) | 토큰 |
 | POST | `/v1/admin/index` | 인덱싱 작업 트리거 | ✅(admin) | 토큰 |
+| POST | `/v1/admin/registry/reload` | 테넌트 레지스트리 핫리로드(무중단) | ✅(admin) | — |
 | GET | `/v1/health` | 헬스체크 | ❌ | — |
 
 > 고객용은 비회원(인증 ❌) + `company_id` 직접 수신. 관리자용만 인증 + 토큰의 company_id 사용(§1.2).
@@ -340,9 +341,21 @@ DELETE /v1/sessions/{session_id}?company_id=pizza
 
 **Request**
 ```json
-{ "source": "documents", "scope": "incremental" }  // scope: full | incremental
+{ "company_id": "pizza", "source": "documents", "scope": "incremental" }  // scope: full | incremental
 ```
 **Response 202** `{ "data": { "job_id": "job_idx_001" } }`
+
+#### POST `/v1/admin/registry/reload` — 테넌트 레지스트리 핫리로드
+
+`configs/tenants.yaml` 변경을 **프로세스 재시작 없이** 반영한다(무중단 신규 업체 추가, §12). 레지스트리(`@lru_cache`)를 비우고 즉시 재구축.
+
+**Request** (body 없음)
+**Response 200**
+```json
+{ "data": { "reloaded": true, "tenants": ["pizza", "chinese", "chicken", "bunsik"] } }
+```
+
+> 다중 레플리카 환경에서는 각 인스턴스에 호출(또는 롤링)한다. 신규 업체의 도구는 별도로 `scripts/index_tools.py <업체>`(증분 색인)로 반영.
 
 ---
 
@@ -388,4 +401,3 @@ DELETE /v1/sessions/{session_id}?company_id=pizza
 - [ ] 레이트리밋 구체 수치(IP/세션 기준)
 - [ ] `session_id` 생성 주체(서버 발급 vs 클라이언트 생성) 및 추측 방지(난수성)
 - [ ] 자동완성 시맨틱 보강 응답을 별도 엔드포인트로 둘지 여부
-```
