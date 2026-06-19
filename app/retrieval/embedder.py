@@ -78,15 +78,43 @@ class FastEmbedEmbedder:
         return [v.tolist() for v in self._model.embed(list(texts))]
 
 
+class RemoteEmbedder:
+    """중앙 임베딩 서버(HTTP) 호출. 모델이 한 곳뿐 → 일관성 구조적 보장, 클라이언트 경량.
+
+    embed 는 동기 인터페이스라 동기 httpx 호출(검색 질의당 1회, 수 ms). 인덱싱 대량
+    적재는 embed_many 로 배치 전송. (운영에서 비동기화 가능 — 인터페이스 동일 유지)
+    """
+
+    def __init__(self, url: str | None = None, dim: int | None = None):
+        import httpx
+
+        self.url = (url or settings.embedding_server_url).rstrip("/")
+        self.dim = dim or settings.embedding_dim
+        self._client = httpx.Client(timeout=10.0)
+
+    def _post(self, texts: list[str]) -> list[list[float]]:
+        r = self._client.post(f"{self.url}/embed", json={"texts": texts})
+        r.raise_for_status()
+        return r.json()["vectors"]
+
+    def embed(self, text: str) -> list[float]:
+        return self._post([text])[0]
+
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        return self._post(list(texts))
+
+
 _embedder: Embedder | None = None
 
 
 def get_embedder() -> Embedder:
-    """전역 임베더. settings.embedding_backend 로 구현 선택(hash | fastembed)."""
+    """전역 임베더. settings.embedding_backend 로 구현 선택(hash | fastembed | remote)."""
     global _embedder
     if _embedder is None:
         if settings.embedding_backend == "fastembed":
             _embedder = FastEmbedEmbedder()
+        elif settings.embedding_backend == "remote":
+            _embedder = RemoteEmbedder()
         else:
             _embedder = HashEmbedder()
     return _embedder

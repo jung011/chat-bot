@@ -33,9 +33,12 @@ class Settings(BaseSettings):
     # (FAQ 임계값은 faq 서버가 소유 — 오케스트레이터에 두지 않음)
     # embedding_backend: "hash"(결정적 의사임베딩, 기본) | "fastembed"(로컬 ONNX 실제 모델)
     #   ⚠️ documents 컬렉션은 general-* 벤더 서버와 공유하므로 동일 backend/model/dim 이어야 함.
+    # embedding_backend: "hash" | "fastembed"(인프로세스 ONNX) | "remote"(중앙 임베딩 서버 API)
     embedding_backend: str = "hash"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dim: int = 384
+    # backend=remote 일 때 호출할 중앙 임베딩 서버 URL(모델 일관성 구조적 보장)
+    embedding_server_url: str = "http://127.0.0.1:9300"
     doc_top_k: int = 20
     doc_top_n: int = 5
     tool_top_k: int = 5
