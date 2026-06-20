@@ -11,6 +11,7 @@ Windows의 기본 asyncio 루프(ProactorEventLoop)는 psycopg async 모드를
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 
 if sys.platform == "win32":
@@ -22,6 +23,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="127.0.0.1",
-        port=8000,
+        port=int(os.getenv("PORT", "8000")),
         reload=True,
     )
