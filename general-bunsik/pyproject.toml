@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "general-bunsik"
+version = "0.1.0"
+description = "분식집 일반(도메인) MCP 서버 (FastAPI + FastMCP) — 독립 배포"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "mcp>=1.2",
+    "qdrant-client>=1.7",
+    "rank-bm25>=0.2",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
