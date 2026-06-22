@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # 오케스트레이션 루프 상한 (§06 §9)
     max_tool_iters: int = 3
 
+    # 요청 전체(end-to-end) 타임아웃(초). 0 이하면 비활성.
+    # LLM 호출당 타임아웃(llm_timeout_seconds)과 별개로, 도구 다단계 호출 등으로
+    # 누적 지연이 길어질 때 요청을 graceful 폴백으로 끊는다. claude_cli 콜드스타트
+    # 누적(복합 질의 ~60s)을 감안해 기본 90s.
+    request_timeout_seconds: float = 90.0
+
     # 라우팅 방식 — "rule"(규칙, LLM 호출 0, 기본) | "llm"(Haiku 분류) | "hybrid"(규칙→모호시 LLM)
     # rule 기본: 일반 RAG 질의의 LLM 호출을 2회(route+generate)→1회(generate)로 줄여 지연 단축.
     route_mode: str = "rule"

@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 
@@ -88,9 +89,11 @@ async def _persist(
 
 
 # ── 동기 ──────────────────────────────────────────────────────────────
-async def chat_sync(tenant: Tenant, *, session_id: str | None, message: str) -> ChatResult:
-    sid = await _ensure_session(tenant, session_id)
-    history = await short_term.history(tenant.company_id, sid)
+async def _plan_and_answer(tenant: Tenant, message: str, history: list[dict]):
+    """오케스트레이션 + 답변 생성. (route, answer, sources, usage, matched) 반환.
+
+    요청 단위 타임아웃으로 감쌀 수 있도록 LLM 포함 작업을 한 코루틴으로 묶는다.
+    """
     state = _mk_state(tenant, message, history)
     state = await run_plan(state)
 
@@ -124,6 +127,27 @@ async def chat_sync(tenant: Tenant, *, session_id: str | None, message: str) -> 
                 answer = prompts.FALLBACK["no_ground"]
         matched = True
 
+    return route, answer, sources, usage, matched
+
+
+async def chat_sync(tenant: Tenant, *, session_id: str | None, message: str) -> ChatResult:
+    sid = await _ensure_session(tenant, session_id)
+    history = await short_term.history(tenant.company_id, sid)
+
+    timeout = settings.request_timeout_seconds
+    coro = _plan_and_answer(tenant, message, history)
+    try:
+        if timeout and timeout > 0:
+            route, answer, sources, usage, matched = await asyncio.wait_for(coro, timeout)
+        else:
+            route, answer, sources, usage, matched = await coro
+    except asyncio.TimeoutError:
+        # 요청 전체 타임아웃 — graceful 폴백(§06 §10.3). 진행 중 LLM 서브프로세스는
+        # 자체 llm_timeout_seconds 로 정리된다.
+        route = "timeout"
+        answer = prompts.FALLBACK["timeout"]
+        sources, usage, matched = [], {"input_tokens": 0, "output_tokens": 0}, False
+
     result = ChatResult(
         session_id=sid, message_id=repo.new_id("msg"), route=route,
         answer=answer, sources=sources, usage=usage,
@@ -136,11 +160,45 @@ async def chat_sync(tenant: Tenant, *, session_id: str | None, message: str) -> 
 async def chat_stream(
     tenant: Tenant, *, session_id: str | None, message: str
 ) -> AsyncIterator[dict]:
-    """SSE 이벤트 제너레이터. 각 dict: {"event": str, "data": dict}."""
+    """SSE 이벤트 제너레이터. 각 dict: {"event": str, "data": dict}.
+
+    요청 전체 타임아웃(request_timeout_seconds)을 두 지점에 적용한다:
+      A) run_plan(첫 토큰 전 검색/도구) 를 wait_for 로 감쌈 → 초과 시 즉시 timeout 폴백.
+      C) 토큰 스트리밍 중 누적 deadline 을 매 토큰마다 확인 → 초과 시 error 이벤트로 중단.
+    (이미 일부 토큰을 보낸 뒤 C 가 발동하면, 보낸 토큰 + 중단 안내가 함께 남는다.)
+    """
     sid = await _ensure_session(tenant, session_id)
     history = await short_term.history(tenant.company_id, sid)
+
+    timeout = settings.request_timeout_seconds
+    loop = asyncio.get_event_loop()
+    deadline = (loop.time() + timeout) if timeout and timeout > 0 else None
+
+    def _remaining() -> float | None:
+        return None if deadline is None else max(0.0, deadline - loop.time())
+
+    # ── A: 첫 토큰 전(run_plan) 타임아웃 ──
     state = _mk_state(tenant, message, history)
-    state = await run_plan(state)
+    try:
+        if deadline is None:
+            state = await run_plan(state)
+        else:
+            state = await asyncio.wait_for(run_plan(state), timeout=_remaining())
+    except asyncio.TimeoutError:
+        message_id = repo.new_id("msg")
+        answer = prompts.FALLBACK["timeout"]
+        yield {"event": "meta", "data": {"session_id": sid, "message_id": message_id, "route": "timeout"}}
+        yield {"event": "error", "data": {"code": "REQUEST_TIMEOUT", "message": "응답 시간 초과"}}
+        for chunk in _chunk(answer):
+            yield {"event": "token", "data": {"text": chunk}}
+        yield {"event": "sources", "data": {"sources": []}}
+        yield {"event": "done", "data": {"finish_reason": "timeout", "usage": {"input_tokens": 0, "output_tokens": 0}}}
+        result = ChatResult(
+            session_id=sid, message_id=message_id, route="timeout",
+            answer=answer, sources=[], usage={"input_tokens": 0, "output_tokens": 0},
+        )
+        await _persist(tenant, sid, message, result, False)
+        return
 
     mode = state.get("mode")
     route = state.get("route", "rag")
@@ -152,12 +210,24 @@ async def chat_stream(
 
     answer_parts: list[str] = []
     matched = True
+    timed_out = False
+    agen = None
     try:
         if mode == "generate" and get_llm().available:
             system, messages = gen_node.build_messages(state)
-            async for tok in get_llm().stream(
+            agen = get_llm().stream(
                 system=system, messages=messages, model=model_for(Stage.GENERATE), max_tokens=1024
-            ):
+            )
+            # ── C: 토큰마다 남은 예산 확인(누적 deadline) ──
+            while True:
+                rem = _remaining()
+                if rem is not None and rem <= 0:
+                    raise asyncio.TimeoutError
+                try:
+                    nxt = agen.__anext__()
+                    tok = await (nxt if rem is None else asyncio.wait_for(nxt, timeout=rem))
+                except StopAsyncIteration:
+                    break
                 answer_parts.append(tok)
                 yield {"event": "token", "data": {"text": tok}}
             answer = "".join(answer_parts).strip() or prompts.FALLBACK["no_ground"]
@@ -173,18 +243,29 @@ async def chat_stream(
             for chunk in _chunk(answer):
                 yield {"event": "token", "data": {"text": chunk}}
     except LLMTimeout:
-        # 타임아웃: error 이벤트 + 폴백 메시지로 종료(§03 §1.5.1 streaming)
+        # 호출당 타임아웃: error 이벤트 + 폴백 메시지로 종료(§03 §1.5.1 streaming)
         answer = prompts.FALLBACK["timeout"]
         matched = False
         yield {"event": "error", "data": {"code": "LLM_TIMEOUT", "message": "응답 시간 초과"}}
         for chunk in _chunk(answer):
             yield {"event": "token", "data": {"text": chunk}}
+    except asyncio.TimeoutError:
+        # C: 요청 전체 예산 초과 — 이미 보낸 토큰 뒤에 중단 안내를 덧붙인다.
+        timed_out, matched = True, False
+        if agen is not None:
+            await agen.aclose()
+        note = prompts.FALLBACK["timeout"]
+        yield {"event": "error", "data": {"code": "REQUEST_TIMEOUT", "message": "응답 시간 초과"}}
+        for chunk in _chunk(note):
+            yield {"event": "token", "data": {"text": chunk}}
+        sent = "".join(answer_parts).strip()
+        answer = (sent + "\n\n" + note) if sent else note
 
     yield {"event": "sources", "data": {"sources": sources}}
-    yield {"event": "done", "data": {"finish_reason": "stop", "usage": usage}}
+    yield {"event": "done", "data": {"finish_reason": "timeout" if timed_out else "stop", "usage": usage}}
 
     result = ChatResult(
-        session_id=sid, message_id=message_id, route=route,
+        session_id=sid, message_id=message_id, route=("timeout" if timed_out else route),
         answer="".join(answer_parts).strip() or answer, sources=sources, usage=usage,
     )
     await _persist(tenant, sid, message, result, matched)

@@ -26,7 +26,8 @@ class Usage(BaseModel):
 
 
 # route: 계단형 필터 어디서 처리됐는지 (§03 §3.1 meta.route)
-Route = Literal["faq_intercept", "rag", "agent", "chitchat"]
+# timeout: 요청 전체 타임아웃으로 graceful 폴백된 경우(§06 §10.3)
+Route = Literal["faq_intercept", "rag", "agent", "chitchat", "timeout"]
 
 
 class ChatSyncData(BaseModel):
