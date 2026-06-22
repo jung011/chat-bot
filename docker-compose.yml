@@ -1,0 +1,62 @@
+# 로컬 개발 인프라 (Postgres / Redis / Qdrant)
+#
+# 사용법:
+#   기본(qdrant 만 — PG/Redis 가 이미 떠 있는 경우):
+#     docker compose up -d
+#   전체(qdrant + postgres + redis 까지 이 compose 로 관리):
+#     docker compose --profile full up -d
+#
+# 주의: 현재 호스트의 5432/6379 가 이미 사용 중이면 postgres/redis 는 포트 충돌이 난다.
+#       그 경우 기존 컨테이너를 쓰거나(=기본 모드), 기존 것을 내리고 --profile full 로 올린다.
+#
+# 접속 정보는 app/core/config.py 기본값(.env 로 override)과 일치:
+#   POSTGRES  postgres/postgres @ localhost:5432/app
+#   REDIS     localhost:16379  (.env REDIS_PORT=16379)
+#   QDRANT    localhost:6333 (REST) / 6334 (gRPC)
+
+name: chat-bot
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: chat-bot-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API / 대시보드(http://localhost:6333/dashboard)
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: chat-bot-postgres
+    profiles: ["full"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: chat-bot-redis
+    profiles: ["full"]
+    restart: unless-stopped
+    ports:
+      - "16379:6379"   # 호스트 16379 → 컨테이너 6379 (.env REDIS_PORT=16379 와 일치)
+    volumes:
+      - redis_data:/data
+
+volumes:
+  qdrant_data:
+  postgres_data:
+  redis_data:
