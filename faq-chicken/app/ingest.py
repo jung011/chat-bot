@@ -8,10 +8,8 @@ from __future__ import annotations
 import hashlib
 
 from app.config import settings
-from app.embedder import HashEmbedder
+from app.embedder import get_embedder
 from app.vector_store import ensure_collection, upsert
-
-_embedder = HashEmbedder(settings.embedding_dim)
 
 
 async def upsert_faq(items: list[dict]) -> dict:
@@ -27,7 +25,7 @@ async def upsert_faq(items: list[dict]) -> dict:
         points.append(
             {
                 "id": f"faq_{settings.company_id}_{qhash}",
-                "vector": _embedder.embed(q),
+                "vector": get_embedder().embed(q),
                 "payload": {
                     "company_id": settings.company_id,
                     "question": q,
